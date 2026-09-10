@@ -295,6 +295,15 @@ See `src/main/resources/application.yml`:
 | `shouldRejectPageSizeAboveMaximum` | `size` above the max (100) → 400 |
 | `shouldRejectMalformedJsonBody` | Unparseable JSON body → 400 |
 
+### Manual / E2E Testing (Postman)
+
+A Postman collection is included for manual end-to-end verification against a running instance:
+
+- `postman/product-catalog-api.postman_collection.json` — 21 requests covering full CRUD, validation, pagination, sorting, and error handling, each with built-in `pm.test` assertions.
+- `postman/API_TEST_RESULTS.md` — recorded results from running the collection against a freshly started instance (21/21 passed).
+
+To reproduce: start the app (`./gradlew bootRun`), import the collection into Postman, and run it top-to-bottom via **Run Collection** (the "0 - Empty List" folder must run first, against a fresh in-memory H2 database).
+
 ## Production Hardening Roadmap
 
 For an actual production deployment, consider:

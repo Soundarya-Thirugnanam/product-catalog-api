@@ -1,0 +1,504 @@
+{
+  "info": {
+    "name": "Product Catalog API",
+    "description": "Full CRUD + validation + error-handling scenario coverage for the Product Catalog API. Run the whole collection top-to-bottom against a freshly restarted app (in-memory H2 is wiped on restart) so the '0 - Empty List' folder sees a genuinely empty catalog.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "productId", "value": "" },
+    { "key": "tempProductId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0 - Empty List Scenario",
+      "item": [
+        {
+          "name": "List products on empty catalog -> 204",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));",
+                  "pm.test('Body is empty', () => pm.expect(pm.response.text()).to.eql(''));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 - Create Product",
+      "item": [
+        {
+          "name": "Create product -> 201",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Wireless Mouse\",\"price\":19.99,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Location header points to the new resource', () => pm.expect(pm.response.headers.get('Location')).to.include('/api/v1/products/'));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response has generated id', () => pm.expect(json.id).to.be.a('string'));",
+                  "pm.test('name matches request', () => pm.expect(json.name).to.eql('Wireless Mouse'));",
+                  "pm.test('status matches request', () => pm.expect(json.status).to.eql('ACTIVE'));",
+                  "pm.collectionVariables.set('productId', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create product with blank name -> 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\" \",\"price\":10.00,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test('fieldErrors.name present', () => pm.expect(json.fieldErrors.name).to.eql('name must not be blank'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create product with null name, price, status -> 400 (all fields)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":null,\"price\":null,\"status\":null}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test('fieldErrors.name present', () => pm.expect(json.fieldErrors).to.have.property('name'));",
+                  "pm.test('fieldErrors.price present', () => pm.expect(json.fieldErrors).to.have.property('price'));",
+                  "pm.test('fieldErrors.status present', () => pm.expect(json.fieldErrors).to.have.property('status'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create product with zero price -> 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Widget\",\"price\":0,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test('fieldErrors.price present', () => pm.expect(json.fieldErrors.price).to.eql('price must be greater than zero'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create product with negative price -> 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Widget\",\"price\":-5,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test('fieldErrors.price present', () => pm.expect(json.fieldErrors.price).to.eql('price must be greater than zero'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create product with malformed JSON body -> 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{not valid json"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test('message explains malformed body', () => pm.expect(json.message).to.eql('Malformed request body'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 - Get Product By Id",
+      "item": [
+        {
+          "name": "Get product by id -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products/{{productId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('id matches requested id', () => pm.expect(json.id).to.eql(pm.collectionVariables.get('productId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get product by unknown id -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products/{{$guid}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404 Not Found', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('message explains not found', () => pm.expect(json.message).to.include('Product not found with id'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 - List Products",
+      "item": [
+        {
+          "name": "List products (default paging) -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('content is a non-empty array', () => pm.expect(json.content.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List products with pagination + sort -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products?page=0&size=10&sortBy=name&direction=asc"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('size reflects requested page size', () => pm.expect(json.size).to.eql(10));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List products filtered by status -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products?status=ACTIVE"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List products with invalid sortBy -> 400 (not 500)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products?sortBy=doesNotExist"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test('fieldErrors.sortBy present', () => pm.expect(json.fieldErrors).to.have.property('sortBy'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List products with size above max -> 400",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products?size=1000"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List products with invalid direction -> 400",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products?direction=sideways"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test('message explains direction error', () => pm.expect(json.message).to.eql('direction must be asc or desc'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 - Update Product",
+      "item": [
+        {
+          "name": "Update product -> 200",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products/{{productId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Wireless Mouse Pro\",\"price\":24.99,\"status\":\"INACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('name updated', () => pm.expect(json.name).to.eql('Wireless Mouse Pro'));",
+                  "pm.test('status updated', () => pm.expect(json.status).to.eql('INACTIVE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update product with blank name -> 400",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products/{{productId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"\",\"price\":10.00,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update unknown product -> 404",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products/{{$guid}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Ghost\",\"price\":10.00,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 - Delete Product",
+      "item": [
+        {
+          "name": "Create temp product for delete scenario -> 201",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Temp Delete Target\",\"price\":1.00,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('tempProductId', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete product -> 204",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/v1/products/{{tempProductId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get deleted product -> 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products/{{tempProductId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete unknown product -> 404",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/v1/products/{{$guid}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
