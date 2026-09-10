@@ -1,4 +1,4 @@
-package com.infobean.productcatalog.shared.exception;
+package com.infobean.productcatalog.exception;
 
 import java.time.Instant;
 import java.util.Map;

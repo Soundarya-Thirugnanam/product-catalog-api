@@ -1,6 +1,6 @@
-package com.infobean.productcatalog.product.domain;
+package com.infobean.productcatalog.constants;
 
-public final class ProductConstraints {
+public final class ProductConstants {
 
     public static final int NAME_MAX_LENGTH = 200;
 
@@ -9,6 +9,6 @@ public final class ProductConstraints {
     public static final int PRICE_FRACTION_DIGITS = 4;
     public static final int PRICE_PRECISION = PRICE_INTEGER_DIGITS + PRICE_FRACTION_DIGITS;
 
-    private ProductConstraints() {
+    private ProductConstants() {
     }
 }

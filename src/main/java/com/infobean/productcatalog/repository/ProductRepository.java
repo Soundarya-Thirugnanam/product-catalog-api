@@ -1,7 +1,7 @@
-package com.infobean.productcatalog.product.application;
+package com.infobean.productcatalog.repository;
 
-import com.infobean.productcatalog.product.domain.Product;
-import com.infobean.productcatalog.product.domain.ProductStatus;
+import com.infobean.productcatalog.entity.Product;
+import com.infobean.productcatalog.entity.ProductStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;

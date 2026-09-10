@@ -1,4 +1,4 @@
-package com.infobean.productcatalog.shared.exception;
+package com.infobean.productcatalog.exception;
 
 import java.util.UUID;
 

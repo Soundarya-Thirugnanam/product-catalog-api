@@ -1,4 +1,4 @@
-package com.infobean.productcatalog.shared.exception;
+package com.infobean.productcatalog.exception;
 
 public final class ErrorMessages {
 
@@ -13,6 +13,8 @@ public final class ErrorMessages {
     public static final String PRICE_MUST_HAVE_AT_MOST_15_INTEGER_DIGITS_AND_4_DECIMAL_PLACES =
             "price must have at most 15 integer digits and 4 decimal places";
     public static final String STATUS_IS_REQUIRED = "status is required";
+    public static final String MALFORMED_REQUEST_BODY = "Malformed request body";
+    public static final String UNEXPECTED_ERROR = "An unexpected error occurred";
 
     private ErrorMessages() {
     }

@@ -1,7 +1,7 @@
-package com.infobean.productcatalog.product.application;
+package com.infobean.productcatalog.dto;
 
-import com.infobean.productcatalog.product.domain.Product;
-import com.infobean.productcatalog.product.domain.ProductStatus;
+import com.infobean.productcatalog.entity.Product;
+import com.infobean.productcatalog.entity.ProductStatus;
 
 import java.math.BigDecimal;
 import java.util.UUID;

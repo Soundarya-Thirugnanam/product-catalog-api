@@ -1,11 +1,11 @@
-package com.infobean.productcatalog.product.api;
+package com.infobean.productcatalog.controller;
 
-import com.infobean.productcatalog.product.application.ProductRequest;
-import com.infobean.productcatalog.product.application.ProductResponse;
-import com.infobean.productcatalog.product.application.ProductService;
-import com.infobean.productcatalog.product.domain.ProductStatus;
-import com.infobean.productcatalog.shared.constants.ApiPaths;
-import com.infobean.productcatalog.shared.exception.ErrorMessages;
+import com.infobean.productcatalog.constants.ApiConstants;
+import com.infobean.productcatalog.dto.ProductRequest;
+import com.infobean.productcatalog.dto.ProductResponse;
+import com.infobean.productcatalog.entity.ProductStatus;
+import com.infobean.productcatalog.exception.ErrorMessages;
+import com.infobean.productcatalog.service.ProductService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -20,8 +20,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping(ApiPaths.PRODUCTS)
-public class
-ProductController {
+public class ProductController {
 
     private final ProductService service;
 
@@ -48,17 +47,23 @@ ProductController {
     @GetMapping
     public ResponseEntity<Page<ProductResponse>> getAll(
             @RequestParam(required = false) ProductStatus status,
-            @RequestParam(defaultValue = PaginationDefaults.DEFAULT_PAGE) @Min(PaginationDefaults.MIN_PAGE) int page,
-            @RequestParam(defaultValue = PaginationDefaults.DEFAULT_SIZE) @Min(PaginationDefaults.MIN_SIZE) @Max(PaginationDefaults.MAX_SIZE) int size,
-            @RequestParam(defaultValue = PaginationDefaults.DEFAULT_SORT_BY) String sortBy,
-            @RequestParam(defaultValue = PaginationDefaults.DEFAULT_DIRECTION) String direction) {
+            @RequestParam(defaultValue = ApiConstants.DEFAULT_PAGE) @Min(ApiConstants.MIN_PAGE) int page,
+            @RequestParam(defaultValue = ApiConstants.DEFAULT_SIZE) @Min(ApiConstants.MIN_SIZE) @Max(ApiConstants.MAX_SIZE) int size,
+            @RequestParam(defaultValue = ApiConstants.DEFAULT_SORT_BY) String sortBy,
+            @RequestParam(defaultValue = ApiConstants.DEFAULT_DIRECTION) String direction) {
 
         Sort.Direction sortDirection = Sort.Direction.fromOptionalString(direction)
                 .orElseThrow(() -> new IllegalArgumentException(ErrorMessages.DIRECTION_MUST_BE_ASC_OR_DESC));
 
         PageRequest pageable = PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
 
-        return ResponseEntity.ok(service.getAll(status, pageable));
+        Page<ProductResponse> products = service.getAll(status, pageable);
+
+        if (products.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+
+        return ResponseEntity.ok(products);
     }
 
     @PutMapping("/{id}")

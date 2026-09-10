@@ -1,4 +1,4 @@
-package com.infobean.productcatalog.product.domain;
+package com.infobean.productcatalog.entity;
 
 public enum ProductStatus {
     ACTIVE,

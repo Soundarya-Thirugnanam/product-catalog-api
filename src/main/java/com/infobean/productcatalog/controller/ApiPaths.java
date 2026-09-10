@@ -1,4 +1,4 @@
-package com.infobean.productcatalog.shared.constants;
+package com.infobean.productcatalog.controller;
 
 public final class ApiPaths {
 

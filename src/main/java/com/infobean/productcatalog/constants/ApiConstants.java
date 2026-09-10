@@ -1,6 +1,6 @@
-package com.infobean.productcatalog.product.api;
+package com.infobean.productcatalog.constants;
 
-public final class PaginationDefaults {
+public final class ApiConstants {
 
     public static final String DEFAULT_PAGE = "0";
     public static final String DEFAULT_SIZE = "20";
@@ -11,6 +11,6 @@ public final class PaginationDefaults {
     public static final int MIN_SIZE = 1;
     public static final int MAX_SIZE = 100;
 
-    private PaginationDefaults() {
+    private ApiConstants() {
     }
 }

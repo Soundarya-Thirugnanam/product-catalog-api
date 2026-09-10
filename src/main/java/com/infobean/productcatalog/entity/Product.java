@@ -1,5 +1,6 @@
-package com.infobean.productcatalog.product.domain;
+package com.infobean.productcatalog.entity;
 
+import com.infobean.productcatalog.constants.ProductConstants;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -16,10 +17,10 @@ public class Product {
     @Column(nullable = false, updatable = false)
     private UUID id;
 
-    @Column(nullable = false, length = ProductConstraints.NAME_MAX_LENGTH)
+    @Column(nullable = false, length = ProductConstants.NAME_MAX_LENGTH)
     private String name;
 
-    @Column(nullable = false, precision = ProductConstraints.PRICE_PRECISION, scale = ProductConstraints.PRICE_FRACTION_DIGITS)
+    @Column(nullable = false, precision = ProductConstants.PRICE_PRECISION, scale = ProductConstants.PRICE_FRACTION_DIGITS)
     private BigDecimal price;
 
     @Enumerated(EnumType.STRING)

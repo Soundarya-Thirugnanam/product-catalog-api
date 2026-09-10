@@ -1,8 +1,11 @@
-package com.infobean.productcatalog.product.application;
+package com.infobean.productcatalog.service;
 
-import com.infobean.productcatalog.product.domain.Product;
-import com.infobean.productcatalog.product.domain.ProductStatus;
-import com.infobean.productcatalog.shared.exception.ProductNotFoundException;
+import com.infobean.productcatalog.dto.ProductRequest;
+import com.infobean.productcatalog.dto.ProductResponse;
+import com.infobean.productcatalog.entity.Product;
+import com.infobean.productcatalog.entity.ProductStatus;
+import com.infobean.productcatalog.exception.ProductNotFoundException;
+import com.infobean.productcatalog.repository.ProductRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -12,14 +15,15 @@ import java.util.UUID;
 
 @Service
 @Transactional(readOnly = true)
-public class ProductService {
+public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository repository;
 
-    public ProductService(ProductRepository repository) {
+    public ProductServiceImpl(ProductRepository repository) {
         this.repository = repository;
     }
 
+    @Override
     @Transactional
     public ProductResponse create(ProductRequest request) {
         Product product = Product.create(
@@ -31,12 +35,14 @@ public class ProductService {
         return ProductResponse.from(repository.save(product));
     }
 
+    @Override
     public ProductResponse getById(UUID id) {
         return repository.findById(id)
                 .map(ProductResponse::from)
                 .orElseThrow(() -> new ProductNotFoundException(id));
     }
 
+    @Override
     public Page<ProductResponse> getAll(ProductStatus status, Pageable pageable) {
         Page<Product> products = status == null
                 ? repository.findAll(pageable)
@@ -45,6 +51,7 @@ public class ProductService {
         return products.map(ProductResponse::from);
     }
 
+    @Override
     @Transactional
     public ProductResponse update(UUID id, ProductRequest request) {
         Product product = repository.findById(id)
@@ -59,6 +66,7 @@ public class ProductService {
         return ProductResponse.from(product);
     }
 
+    @Override
     @Transactional
     public void delete(UUID id) {
         Product product = repository.findById(id)

@@ -1,8 +1,11 @@
-package com.infobean.productcatalog.product.application;
+package com.infobean.productcatalog.service;
 
-import com.infobean.productcatalog.product.domain.Product;
-import com.infobean.productcatalog.product.domain.ProductStatus;
-import com.infobean.productcatalog.shared.exception.ProductNotFoundException;
+import com.infobean.productcatalog.dto.ProductRequest;
+import com.infobean.productcatalog.dto.ProductResponse;
+import com.infobean.productcatalog.entity.Product;
+import com.infobean.productcatalog.entity.ProductStatus;
+import com.infobean.productcatalog.exception.ProductNotFoundException;
+import com.infobean.productcatalog.repository.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -27,7 +30,7 @@ class ProductServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ProductService(repository);
+        service = new ProductServiceImpl(repository);
     }
 
     @Test
