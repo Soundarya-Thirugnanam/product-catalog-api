@@ -52,7 +52,10 @@ HTTP
 ProductController
  │
  ▼
-ProductService
+ProductService (interface)
+ │
+ ▼
+ProductServiceImpl
  │
  ▼
 ProductRepository
@@ -61,45 +64,52 @@ ProductRepository
 Database
 ```
 
-The code is split into API, application, domain, and shared exception concerns.
+The code is split into layered packages by technical concern: `controller`, `service`, `repository`, `entity`, `dto`, `exception`, and `constants`.
 
 ### Responsibilities
 
-**Controller** (`product/api`)
+**Controller** (`controller`)
 - HTTP contract
 - request validation
 - HTTP status codes
 - pagination parameters
 
-**Service** (`product/application`)
-- business/use-case orchestration
-- transaction boundary
-- resource existence rules
+**Service** (`service`)
+- `ProductService` — the contract the controller depends on (dependency inversion; no implementation details leak into the controller)
+- `ProductServiceImpl` — business/use-case orchestration, transaction boundary, resource existence rules
 
-**Domain** (`product/domain`)
+**Entity** (`entity`)
 - `Product` entity and behavior
 - `ProductStatus`
 - no HTTP concerns
 
-**Repository** (`product/application`)
+**Repository** (`repository`)
 - persistence abstraction (Spring Data JPA)
 - no business logic
 
-**Exception Handler** (`shared/exception`)
+**DTO** (`dto`)
+- `ProductRequest` / `ProductResponse` — the public API contract, separate from the JPA entity
+
+**Exception Handler** (`exception`)
 - consistent API error contract
-- maps domain/application errors to HTTP responses
+- maps domain/application/framework errors to HTTP responses
+
+**Constants** (`constants`)
+- `ApiConstants` — pagination defaults/limits
+- `ProductConstants` — field-level constraints (name length, price precision/digits)
+- `ValidationConstants` — reserved for future validation-only constants
 
 ## SOLID
 
 - **Single Responsibility** — each class has one reason to change.
 - **Open/Closed** — new persistence implementations or application policies can be introduced without changing the controller contract.
-- **Liskov Substitution** — the service depends on the repository abstraction rather than concrete persistence behavior.
-- **Interface Segregation** — `ProductRepository` only exposes catalog persistence operations.
-- **Dependency Inversion** — the application layer depends on `ProductRepository` (an abstraction), while Spring Data supplies the implementation.
+- **Liskov Substitution** — the controller depends on the `ProductService` abstraction, so any conforming implementation (e.g. `ProductServiceImpl`) can be substituted without changing calling code.
+- **Interface Segregation** — `ProductRepository` only exposes catalog persistence operations; `ProductService` only exposes catalog use cases the controller needs.
+- **Dependency Inversion** — `ProductController` depends on the `ProductService` interface, not `ProductServiceImpl`; `ProductServiceImpl` depends on the `ProductRepository` abstraction, while Spring Data supplies the implementation.
 
 ## Design Patterns
 
-- **Service Layer** — encapsulates business use cases.
+- **Service Layer** — `ProductService`/`ProductServiceImpl` encapsulate business use cases behind an interface.
 - **Repository Pattern** — separates persistence from business logic.
 - **DTO Pattern** — `ProductRequest`/`ProductResponse` prevent exposing the JPA entity as the public API contract.
 - **Factory Method** — `Product.create(...)` centralizes valid domain object creation.
@@ -113,7 +123,7 @@ Base path: `/api/v1/products`
 |---|---|---|
 | Create | `POST /api/v1/products` | 201 Created |
 | Read | `GET /api/v1/products/{id}` | 200 OK |
-| List | `GET /api/v1/products` | 200 OK |
+| List | `GET /api/v1/products` | 200 OK (non-empty) / 204 No Content (empty) |
 | Update | `PUT /api/v1/products/{id}` | 200 OK |
 | Delete | `DELETE /api/v1/products/{id}` | 204 No Content |
 
@@ -159,6 +169,8 @@ Pagination parameters:
 
 Maximum page size is capped at 100 to avoid accidental large queries.
 
+If the catalog (or the filtered result set) is empty, the endpoint returns `204 No Content` with no body instead of `200 OK` with an empty page.
+
 ### Update a product
 
 ```bash
@@ -179,7 +191,7 @@ curl -X DELETE http://localhost:8080/api/v1/products/{id}
 - `name`: required, non-blank, max 200 characters
 - `price`: required, greater than zero
 - `price`: maximum 15 integer digits and 4 decimal places
-- `status`: required (`ACTIVE`, `INACTIVE`, `DISCONTINUED` — see `ProductStatus`)
+- `status`: required (`ACTIVE`, `INACTIVE` — see `ProductStatus`)
 - `page`: `>= 0`
 - `size`: `1–100`
 - `direction`: `asc`/`desc`
@@ -190,7 +202,7 @@ curl -X DELETE http://localhost:8080/api/v1/products/{id}
 
 ## Error Contract
 
-All errors are handled centrally by `GlobalExceptionHandler` and returned as `ApiError`.
+All errors are handled centrally by `GlobalExceptionHandler` and returned as `ApiError` — including bean-validation failures, an unknown `sortBy` field, a malformed JSON body, framework-level parameter validation (e.g. `size` above the max), and any unexpected exception (mapped to `500` with a safe generic message). No request failure falls through to Spring Boot's default error page.
 
 Validation error (`400 Bad Request`):
 
@@ -253,8 +265,35 @@ See `src/main/resources/application.yml`:
 ./gradlew test
 ```
 
-- `ProductServiceTest` — unit tests for the service layer (Mockito)
-- `ProductControllerIntegrationTest` — MockMvc-based integration tests for the HTTP layer
+- `ProductServiceTest` — unit tests for `ProductServiceImpl` (Mockito)
+- `ProductControllerTest` — `@SpringBootTest` + MockMvc integration tests for the HTTP layer
+
+### `ProductServiceTest`
+
+| Test | Verifies |
+|---|---|
+| `shouldCreateProductAndNormalizeName` | create() normalizes whitespace in `name` and persists the product |
+| `shouldUpdateExistingProduct` | update() applies new name/price/status to an existing product |
+| `shouldThrow404WhenProductDoesNotExist` | getById() throws `ProductNotFoundException` for an unknown id |
+| `shouldNotDeleteUnknownProduct` | delete() throws `ProductNotFoundException` and never calls `repository.delete()` for an unknown id |
+
+### `ProductControllerTest`
+
+| Test | Verifies |
+|---|---|
+| `shouldCreateGetUpdateAndDeleteProduct` | Full CRUD lifecycle: 201 on create, 200 on get/update, 204 on delete, 404 on get after delete |
+| `shouldRejectBlankName` | Blank `name` → 400 with `fieldErrors.name` |
+| `shouldRejectNullNamePriceAndStatus` | `name`, `price`, `status` all `null` → 400 with all three field errors |
+| `shouldRejectZeroPrice` | `price = 0` → 400 with `fieldErrors.price` |
+| `shouldRejectNegativePrice` | `price < 0` → 400 with `fieldErrors.price` |
+| `shouldReturn404ForUnknownProductOnGet` | GET unknown id → 404 |
+| `shouldReturn404WhenUpdatingUnknownProduct` | PUT unknown id → 404 |
+| `shouldReturn404WhenDeletingUnknownProduct` | DELETE unknown id → 404 |
+| `shouldReturnNoContentWhenListIsEmpty` | GET list with no products → 204 No Content |
+| `shouldSupportPagination` | GET list with `page`/`size`/`sortBy`/`direction` → 200 with the requested page size |
+| `shouldRejectInvalidSortField` | Unknown `sortBy` value → 400 (not an unhandled 500) with `fieldErrors.sortBy` |
+| `shouldRejectPageSizeAboveMaximum` | `size` above the max (100) → 400 |
+| `shouldRejectMalformedJsonBody` | Unparseable JSON body → 400 |
 
 ## Production Hardening Roadmap
 
@@ -318,13 +357,59 @@ Read-heavy catalog traffic can use Redis caching, with the database as the sourc
 ## Project Structure
 
 ```text
-src/main/java/com/infobean/productcatalog/
-├── ProductCatalogApplication.java
-├── product/
-│   ├── api/            # controller, pagination defaults
-│   ├── application/    # service, repository interface, request/response DTOs
-│   └── domain/         # entity, status enum, constraints
-└── shared/
-    ├── constants/      # API path constants
-    └── exception/      # global exception handler, ApiError, error messages
+product-catalog-api/
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/infobean/productcatalog/
+│   │   │       │
+│   │   │       ├── ProductCatalogApplication.java
+│   │   │       │
+│   │   │       ├── controller/
+│   │   │       │   ├── ProductController.java
+│   │   │       │   └── ApiPaths.java
+│   │   │       │
+│   │   │       ├── service/
+│   │   │       │   ├── ProductService.java        # interface — controller depends on this
+│   │   │       │   └── ProductServiceImpl.java     # implementation
+│   │   │       │
+│   │   │       ├── repository/
+│   │   │       │   └── ProductRepository.java
+│   │   │       │
+│   │   │       ├── entity/
+│   │   │       │   ├── Product.java
+│   │   │       │   └── ProductStatus.java
+│   │   │       │
+│   │   │       ├── dto/
+│   │   │       │   ├── ProductRequest.java
+│   │   │       │   └── ProductResponse.java
+│   │   │       │
+│   │   │       ├── exception/
+│   │   │       │   ├── ApiError.java
+│   │   │       │   ├── ErrorMessages.java
+│   │   │       │   ├── GlobalExceptionHandler.java
+│   │   │       │   └── ProductNotFoundException.java
+│   │   │       │
+│   │   │       └── constants/
+│   │   │           ├── ApiConstants.java           # pagination defaults/limits
+│   │   │           ├── ProductConstants.java        # field-level constraints
+│   │   │           └── ValidationConstants.java      # reserved for future use
+│   │   │
+│   │   └── resources/
+│   │       └── application.yml
+│   │
+│   └── test/
+│       └── java/
+│           └── com/infobean/productcatalog/
+│               ├── controller/
+│               │   └── ProductControllerTest.java
+│               └── service/
+│                   └── ProductServiceTest.java
+│
+├── build.gradle
+├── settings.gradle
+├── gradlew
+├── gradlew.bat
+├── .gitignore
+└── README.md
 ```
