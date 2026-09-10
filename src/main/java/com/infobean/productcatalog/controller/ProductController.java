@@ -1,17 +1,16 @@
 package com.infobean.productcatalog.controller;
 
 import com.infobean.productcatalog.constants.ApiConstants;
+import com.infobean.productcatalog.dto.ProductPageRequest;
 import com.infobean.productcatalog.dto.ProductRequest;
 import com.infobean.productcatalog.dto.ProductResponse;
 import com.infobean.productcatalog.entity.ProductStatus;
-import com.infobean.productcatalog.exception.ErrorMessages;
 import com.infobean.productcatalog.service.ProductService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -52,10 +51,7 @@ public class ProductController {
             @RequestParam(defaultValue = ApiConstants.DEFAULT_SORT_BY) String sortBy,
             @RequestParam(defaultValue = ApiConstants.DEFAULT_DIRECTION) String direction) {
 
-        Sort.Direction sortDirection = Sort.Direction.fromOptionalString(direction)
-                .orElseThrow(() -> new IllegalArgumentException(ErrorMessages.DIRECTION_MUST_BE_ASC_OR_DESC));
-
-        PageRequest pageable = PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
+        Pageable pageable = new ProductPageRequest(page, size, sortBy, direction).toPageable();
 
         Page<ProductResponse> products = service.getAll(status, pageable);
 
