@@ -40,8 +40,10 @@ http://localhost:8080
 H2 console (JDBC URL `jdbc:h2:mem:productdb`, user `sa`, empty password):
 
 ```text
-http://localhost:8080/h2-console
+http://localhost:8090
 ```
+
+Spring Boot 4.x removed `H2ConsoleAutoConfiguration`, and H2's servlet wrapper still targets `javax.servlet` (incompatible with Jakarta EE 10 / Tomcat 11), so the console can no longer be embedded at `/h2-console` on the app's own port. `H2ConsoleConfig` (`config` package) instead starts H2's standalone web server in-process on port `8090` (configurable via `spring.h2.console.web-port`), which shares the same in-memory database as the running app.
 
 ## Architecture
 
@@ -255,7 +257,7 @@ If key is new → execute request and persist response
 See `src/main/resources/application.yml`:
 
 - H2 in-memory database (`jdbc:h2:mem:productdb`), schema created via `ddl-auto: create-drop`
-- H2 console enabled at `/h2-console`
+- H2 standalone web console enabled at `http://localhost:8090` (see `H2ConsoleConfig`)
 - Server port `8080`, graceful shutdown
 - Actuator endpoints exposed: `health`, `info`, `metrics`
 
@@ -377,6 +379,9 @@ product-catalog-api/
 │   │   │       ├── controller/
 │   │   │       │   ├── ProductController.java
 │   │   │       │   └── ApiPaths.java
+│   │   │       │
+│   │   │       ├── config/
+│   │   │       │   └── H2ConsoleConfig.java        # standalone H2 web console (port 8090)
 │   │   │       │
 │   │   │       ├── service/
 │   │   │       │   ├── ProductService.java        # interface — controller depends on this
