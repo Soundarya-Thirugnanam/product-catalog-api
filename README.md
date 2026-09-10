@@ -66,7 +66,7 @@ ProductRepository
 Database
 ```
 
-The code is split into layered packages by technical concern: `controller`, `service`, `repository`, `entity`, `dto`, `exception`, and `constants`.
+The code is split into layered packages by technical concern: `controller`, `service`, `repository`, `entity`, `dto`, `exception`, `web`, and `constants`.
 
 ### Responsibilities
 
@@ -74,7 +74,10 @@ The code is split into layered packages by technical concern: `controller`, `ser
 - HTTP contract
 - request validation
 - HTTP status codes
-- pagination parameters
+- pagination parameters (delegates `Pageable` construction to `PageableFactory`)
+
+**Web** (`web`)
+- `PageableFactory` — turns validated `page`/`size`/`sortBy`/`direction` request params into a `Pageable`, including sort-direction parsing; injected into `ProductController` so it's reusable by future paginated endpoints and unit-testable without a Spring context
 
 **Service** (`service`)
 - `ProductService` — the contract the controller depends on (dependency inversion; no implementation details leak into the controller)
@@ -114,7 +117,7 @@ The code is split into layered packages by technical concern: `controller`, `ser
 - **Service Layer** — `ProductService`/`ProductServiceImpl` encapsulate business use cases behind an interface.
 - **Repository Pattern** — separates persistence from business logic.
 - **DTO Pattern** — `ProductRequest`/`ProductResponse` prevent exposing the JPA entity as the public API contract.
-- **Factory Method** — `Product.create(...)` centralizes valid domain object creation.
+- **Factory Method** — `Product.create(...)` centralizes valid domain object creation; `PageableFactory.create(...)` centralizes `Pageable` construction and sort-direction validation, keeping that logic out of the controller.
 - **Strategy / Policy Extension Point** — the service is structured so pricing, validation, or catalog policies can later be extracted behind interfaces instead of growing the controller.
 
 ## API Reference
@@ -403,6 +406,9 @@ product-catalog-api/
 │   │   │       │   ├── ErrorMessages.java
 │   │   │       │   ├── GlobalExceptionHandler.java
 │   │   │       │   └── ProductNotFoundException.java
+│   │   │       │
+│   │   │       ├── web/
+│   │   │       │   └── PageableFactory.java        # builds Pageable from page/size/sortBy/direction
 │   │   │       │
 │   │   │       └── constants/
 │   │   │           ├── ApiConstants.java           # pagination defaults/limits
