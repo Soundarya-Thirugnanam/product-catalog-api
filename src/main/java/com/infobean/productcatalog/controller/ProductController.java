@@ -1,11 +1,11 @@
 package com.infobean.productcatalog.controller;
 
 import com.infobean.productcatalog.constants.ApiConstants;
-import com.infobean.productcatalog.dto.ProductPageRequest;
 import com.infobean.productcatalog.dto.ProductRequest;
 import com.infobean.productcatalog.dto.ProductResponse;
 import com.infobean.productcatalog.entity.ProductStatus;
 import com.infobean.productcatalog.service.ProductService;
+import com.infobean.productcatalog.web.PageableFactory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -22,9 +22,11 @@ import java.util.UUID;
 public class ProductController {
 
     private final ProductService service;
+    private final PageableFactory pageableFactory;
 
-    public ProductController(ProductService service) {
+    public ProductController(ProductService service, PageableFactory pageableFactory) {
         this.service = service;
+        this.pageableFactory = pageableFactory;
     }
 
     @PostMapping
@@ -51,7 +53,7 @@ public class ProductController {
             @RequestParam(defaultValue = ApiConstants.DEFAULT_SORT_BY) String sortBy,
             @RequestParam(defaultValue = ApiConstants.DEFAULT_DIRECTION) String direction) {
 
-        Pageable pageable = new ProductPageRequest(page, size, sortBy, direction).toPageable();
+        Pageable pageable = pageableFactory.create(page, size, sortBy, direction);
 
         Page<ProductResponse> products = service.getAll(status, pageable);
 

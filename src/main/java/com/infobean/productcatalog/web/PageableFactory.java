@@ -1,21 +1,15 @@
-package com.infobean.productcatalog.dto;
+package com.infobean.productcatalog.web;
 
-import com.infobean.productcatalog.constants.ApiConstants;
 import com.infobean.productcatalog.exception.ErrorMessages;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Component;
 
-public record ProductPageRequest(
-        @Min(ApiConstants.MIN_PAGE) int page,
-        @Min(ApiConstants.MIN_SIZE) @Max(ApiConstants.MAX_SIZE) int size,
-        String sortBy,
-        String direction
-) {
+@Component
+public class PageableFactory {
 
-    public Pageable toPageable() {
+    public Pageable create(int page, int size, String sortBy, String direction) {
         Sort.Direction sortDirection = Sort.Direction.fromOptionalString(direction)
                 .orElseThrow(() -> new IllegalArgumentException(ErrorMessages.DIRECTION_MUST_BE_ASC_OR_DESC));
 
