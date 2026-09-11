@@ -9,6 +9,9 @@ public final class ProductConstants {
     public static final int PRICE_FRACTION_DIGITS = 4;
     public static final int PRICE_PRECISION = PRICE_INTEGER_DIGITS + PRICE_FRACTION_DIGITS;
 
+    /**
+     * Prevents instantiation.
+     */
     private ProductConstants() {
     }
 }

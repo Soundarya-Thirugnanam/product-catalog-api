@@ -4,6 +4,7 @@ import com.infobean.productcatalog.constants.ApiConstants;
 import com.infobean.productcatalog.dto.ProductRequest;
 import com.infobean.productcatalog.dto.ProductResponse;
 import com.infobean.productcatalog.entity.ProductStatus;
+import com.infobean.productcatalog.exception.ProductNotFoundException;
 import com.infobean.productcatalog.service.ProductService;
 import com.infobean.productcatalog.web.PageableFactory;
 import jakarta.validation.Valid;
@@ -24,11 +25,17 @@ public class ProductController {
     private final ProductService service;
     private final PageableFactory pageableFactory;
 
+    /**
+     * Creates the controller with its service dependencies.
+     */
     public ProductController(ProductService service, PageableFactory pageableFactory) {
         this.service = service;
         this.pageableFactory = pageableFactory;
     }
 
+    /**
+     * Creates a new product.
+     */
     @PostMapping
     public ResponseEntity<ProductResponse> create(
             @Valid @RequestBody ProductRequest request) {
@@ -40,11 +47,19 @@ public class ProductController {
                 .body(response);
     }
 
+    /**
+     * Fetches a single product by id.
+     *
+     * @throws ProductNotFoundException if the product does not exist
+     */
     @GetMapping("/{id}")
     public ResponseEntity<ProductResponse> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(service.getById(id));
     }
 
+    /**
+     * Lists products, optionally filtered by status.
+     */
     @GetMapping
     public ResponseEntity<Page<ProductResponse>> getAll(
             @RequestParam(required = false) ProductStatus status,
@@ -64,6 +79,11 @@ public class ProductController {
         return ResponseEntity.ok(products);
     }
 
+    /**
+     * Replaces an existing product with the provided details.
+     *
+     * @throws ProductNotFoundException if the product does not exist
+     */
     @PutMapping("/{id}")
     public ResponseEntity<ProductResponse> update(
             @PathVariable UUID id,
@@ -72,6 +92,11 @@ public class ProductController {
         return ResponseEntity.ok(service.update(id, request));
     }
 
+    /**
+     * Deletes a product by id.
+     *
+     * @throws ProductNotFoundException if the product does not exist
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         service.delete(id);

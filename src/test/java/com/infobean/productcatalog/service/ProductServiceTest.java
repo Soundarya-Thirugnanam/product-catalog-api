@@ -28,11 +28,17 @@ class ProductServiceTest {
 
     private ProductService service;
 
+    /**
+     * Constructs the service under test before each test.
+     */
     @BeforeEach
     void setUp() {
         service = new ProductServiceImpl(repository);
     }
 
+    /**
+     * Name normalization must apply on create.
+     */
     @Test
     void shouldCreateProductAndNormalizeName() {
         ProductRequest request =
@@ -54,6 +60,9 @@ class ProductServiceTest {
         verify(repository).save(any(Product.class));
     }
 
+    /**
+     * An existing product must be updated with the new details.
+     */
     @Test
     void shouldUpdateExistingProduct() {
         UUID id = UUID.randomUUID();
@@ -75,6 +84,9 @@ class ProductServiceTest {
         assertThat(response.status()).isEqualTo(ProductStatus.ACTIVE);
     }
 
+    /**
+     * A missing product must throw {@link ProductNotFoundException}.
+     */
     @Test
     void shouldThrow404WhenProductDoesNotExist() {
         UUID id = UUID.randomUUID();
@@ -85,6 +97,9 @@ class ProductServiceTest {
                 .hasMessage("Product not found with id: " + id);
     }
 
+    /**
+     * A missing product must not be deleted.
+     */
     @Test
     void shouldNotDeleteUnknownProduct() {
         UUID id = UUID.randomUUID();

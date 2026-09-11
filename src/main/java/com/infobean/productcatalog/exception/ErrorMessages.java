@@ -16,6 +16,9 @@ public final class ErrorMessages {
     public static final String MALFORMED_REQUEST_BODY = "Malformed request body";
     public static final String UNEXPECTED_ERROR = "An unexpected error occurred";
 
+    /**
+     * Prevents instantiation.
+     */
     private ErrorMessages() {
     }
 }

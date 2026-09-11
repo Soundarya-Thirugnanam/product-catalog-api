@@ -19,6 +19,9 @@ import java.sql.SQLException;
 @ConditionalOnProperty(prefix = "spring.h2.console", name = "enabled", havingValue = "true")
 public class H2ConsoleConfig {
 
+    /**
+     * Starts H2's standalone web console as a managed bean.
+     */
     @Bean(initMethod = "start", destroyMethod = "stop")
     public Server h2ConsoleServer(@Value("${spring.h2.console.web-port:8090}") String webPort) throws SQLException {
         return Server.createWebServer("-webPort", webPort);

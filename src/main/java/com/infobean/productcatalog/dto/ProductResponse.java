@@ -12,6 +12,9 @@ public record ProductResponse(
         BigDecimal price,
         ProductStatus status
 ) {
+    /**
+     * Maps a {@link Product} entity to its API-facing representation.
+     */
     public static ProductResponse from(Product product) {
         return new ProductResponse(
                 product.getId(),

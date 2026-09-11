@@ -10,6 +10,9 @@ import java.util.UUID;
 
 public interface ProductRepository extends JpaRepository<Product, UUID> {
 
+    /**
+     * Finds products by status with pagination.
+     */
     Page<Product> findAllByStatus(
             ProductStatus status,
             Pageable pageable);

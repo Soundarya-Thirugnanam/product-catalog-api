@@ -18,6 +18,9 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /**
+     * Handles {@code @Valid @RequestBody} validation failures.
+     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidation(
             MethodArgumentNotValidException exception,
@@ -36,6 +39,9 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles constraint violations on request parameters and path variables.
+     */
     @ExceptionHandler(HandlerMethodValidationException.class)
     public ResponseEntity<ApiError> handleHandlerMethodValidation(
             HandlerMethodValidationException exception,
@@ -57,6 +63,9 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles an unknown or unsortable {@code sortBy} property.
+     */
     @ExceptionHandler(PropertyReferenceException.class)
     public ResponseEntity<ApiError> handlePropertyReference(
             PropertyReferenceException exception,
@@ -70,6 +79,9 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles a request body that fails to parse as JSON.
+     */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiError> handleMalformedRequest(
             HttpMessageNotReadableException exception,
@@ -83,6 +95,9 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles a lookup or mutation against a product id that doesn't exist.
+     */
     @ExceptionHandler(ProductNotFoundException.class)
     public ResponseEntity<ApiError> handleNotFound(
             ProductNotFoundException exception,
@@ -96,6 +111,9 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles domain-level argument problems raised directly by application code.
+     */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> handleIllegalArgument(
             IllegalArgumentException exception,
@@ -109,6 +127,9 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Handles constraint violations outside the normal Spring MVC validation path.
+     */
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ApiError> handleConstraintViolation(
             ConstraintViolationException exception,
@@ -122,6 +143,9 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Catch-all for anything not handled above.
+     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleUnexpected(
             Exception exception,
@@ -135,6 +159,9 @@ public class GlobalExceptionHandler {
         );
     }
 
+    /**
+     * Shared assembly point for every handler above.
+     */
     private ResponseEntity<ApiError> build(
             HttpStatus status,
             String message,

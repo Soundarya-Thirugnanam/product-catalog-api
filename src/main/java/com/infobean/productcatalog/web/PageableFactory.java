@@ -9,6 +9,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class PageableFactory {
 
+    /**
+     * Builds a {@link Pageable} from raw request parameters.
+     *
+     * @throws IllegalArgumentException if direction is not {@code asc} or {@code desc}
+     */
     public Pageable create(int page, int size, String sortBy, String direction) {
         Sort.Direction sortDirection = Sort.Direction.fromOptionalString(direction)
                 .orElseThrow(() -> new IllegalArgumentException(ErrorMessages.DIRECTION_MUST_BE_ASC_OR_DESC));

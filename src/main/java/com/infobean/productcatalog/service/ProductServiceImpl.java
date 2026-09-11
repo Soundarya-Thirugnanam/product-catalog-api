@@ -19,10 +19,16 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository repository;
 
+    /**
+     * Creates the service with its repository dependency.
+     */
     public ProductServiceImpl(ProductRepository repository) {
         this.repository = repository;
     }
 
+    /**
+     * Creates and persists a new product from the given request.
+     */
     @Override
     @Transactional
     public ProductResponse create(ProductRequest request) {
@@ -35,6 +41,11 @@ public class ProductServiceImpl implements ProductService {
         return ProductResponse.from(repository.save(product));
     }
 
+    /**
+     * Fetches a single product by id.
+     *
+     * @throws ProductNotFoundException if the product does not exist
+     */
     @Override
     public ProductResponse getById(UUID id) {
         return repository.findById(id)
@@ -42,6 +53,9 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new ProductNotFoundException(id));
     }
 
+    /**
+     * Lists products, optionally filtered by status.
+     */
     @Override
     public Page<ProductResponse> getAll(ProductStatus status, Pageable pageable) {
         Page<Product> products = status == null
@@ -50,6 +64,12 @@ public class ProductServiceImpl implements ProductService {
 
         return products.map(ProductResponse::from);
     }
+
+    /**
+     * Updates an existing product with the provided details.
+     *
+     * @throws ProductNotFoundException if the product does not exist
+     */
 
     @Override
     @Transactional
@@ -66,6 +86,11 @@ public class ProductServiceImpl implements ProductService {
         return ProductResponse.from(product);
     }
 
+    /**
+     * Deletes a product by id.
+     *
+     * @throws ProductNotFoundException if the product does not exist
+     */
     @Override
     @Transactional
     public void delete(UUID id) {
@@ -75,6 +100,9 @@ public class ProductServiceImpl implements ProductService {
         repository.delete(product);
     }
 
+    /**
+     * Trims and collapses repeated whitespace in a product name.
+     */
     private String normalizeName(String name) {
         return name.trim().replaceAll("\\s+", " ");
     }

@@ -27,9 +27,15 @@ public class Product {
     @Column(nullable = false, length = 20)
     private ProductStatus status;
 
+    /**
+     * No-arg constructor required by JPA.
+     */
     protected Product() {
     }
 
+    /**
+     * Backs {@link #create}.
+     */
     private Product(UUID id, String name, BigDecimal price, ProductStatus status) {
         this.id = id;
         this.name = name;
@@ -37,10 +43,16 @@ public class Product {
         this.status = status;
     }
 
+    /**
+     * Factory for new products, generating a fresh id.
+     */
     public static Product create(String name, BigDecimal price, ProductStatus status) {
         return new Product(UUID.randomUUID(), name, price, status);
     }
 
+    /**
+     * Applies a full update to an existing product in place.
+     */
     public void update(String name, BigDecimal price, ProductStatus status) {
         this.name = name;
         this.price = price;
