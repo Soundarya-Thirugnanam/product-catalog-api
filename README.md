@@ -131,13 +131,18 @@ Base path: `/api/v1/products`
 | List | `GET /api/v1/products` | 200 OK (non-empty) / 204 No Content (empty) |
 | Update | `PUT /api/v1/products/{id}` | 200 OK |
 | Delete | `DELETE /api/v1/products/{id}` | 204 No Content |
+| Audit history | `GET /api/v1/products/{id}/audit` | 200 OK (always — empty array if none) |
 
 ### Create a product
+
+An optional `X-User-Name` header identifies who's making the request, for the
+`createdBy`/`updatedBy` audit fields (see [Auditing & Change History](#auditing--change-history)).
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/products \
   -H "Content-Type: application/json" \
-  -d '{"name":"Wireless Mouse","price":19.99,"status":"ACTIVE"}'
+  -H "X-User-Name: alice" \
+  -d '{"name":"Wireless Mouse","description":"Ergonomic wireless mouse with USB receiver","price":19.99,"status":"ACTIVE"}'
 ```
 
 Response `201 Created` (with `Location: /api/v1/products/{id}`):
@@ -146,10 +151,17 @@ Response `201 Created` (with `Location: /api/v1/products/{id}`):
 {
   "id": "e2f1a2b0-1234-4a5b-8cde-1234567890ab",
   "name": "Wireless Mouse",
+  "description": "Ergonomic wireless mouse with USB receiver",
   "price": 19.99,
-  "status": "ACTIVE"
+  "status": "ACTIVE",
+  "createdOn": "2026-09-11T13:47:33.848735Z",
+  "updatedOn": "2026-09-11T13:47:33.848735Z",
+  "createdBy": "alice",
+  "updatedBy": "alice"
 }
 ```
+
+`description` is optional — omit it, or send `null`/empty, and the product is created without one.
 
 ### List products (paginated)
 
@@ -178,10 +190,15 @@ If the catalog (or the filtered result set) is empty, the endpoint returns `204 
 
 ### Update a product
 
+A product's name must be unique; updating one to a name already used by
+another product returns `409 Conflict` (renaming a product to its own current
+name is fine).
+
 ```bash
 curl -X PUT http://localhost:8080/api/v1/products/{id} \
   -H "Content-Type: application/json" \
-  -d '{"name":"Wireless Mouse","price":17.99,"status":"ACTIVE"}'
+  -H "X-User-Name: bob" \
+  -d '{"name":"Wireless Mouse","description":"Ergonomic wireless mouse with USB receiver","price":17.99,"status":"ACTIVE"}'
 ```
 
 ### Delete a product
@@ -190,10 +207,53 @@ curl -X PUT http://localhost:8080/api/v1/products/{id} \
 curl -X DELETE http://localhost:8080/api/v1/products/{id}
 ```
 
+### Get a product's audit history
+
+Returns every create/update/delete recorded for a product, most recent first —
+available even after the product itself has been deleted, since the main
+`products` table only ever holds the latest value.
+
+```bash
+curl http://localhost:8080/api/v1/products/{id}/audit
+```
+
+Response `200 OK`:
+
+```json
+[
+  {
+    "id": "c496779b-be89-41a0-9bc0-d6501aa35c27",
+    "productId": "94dc47b8-4842-429d-85ee-a263f17ccb9b",
+    "name": "Wireless Mouse Pro",
+    "description": "Ergonomic wireless mouse, now with a faster sensor",
+    "price": 24.99,
+    "status": "INACTIVE",
+    "action": "UPDATED",
+    "performedBy": "bob",
+    "performedOn": "2026-09-11T13:47:43.449191Z"
+  },
+  {
+    "id": "fc3631d2-cd1c-4fea-a92e-217921fbd6d7",
+    "productId": "94dc47b8-4842-429d-85ee-a263f17ccb9b",
+    "name": "Wireless Mouse",
+    "description": "Ergonomic wireless mouse with USB receiver",
+    "price": 19.99,
+    "status": "ACTIVE",
+    "action": "CREATED",
+    "performedBy": "alice",
+    "performedOn": "2026-09-11T13:47:33.861235Z"
+  }
+]
+```
+
+An unknown product id returns `200 OK` with an empty array rather than `404`,
+since "no history" is a valid answer.
+
 ## Validation
 
 ### Request validation (`ProductRequest`)
 - `name`: required, non-blank, max 200 characters
+- `description`: optional — `null`/empty is fine, max 1000 characters when present
 - `price`: required, greater than zero
 - `price`: maximum 15 integer digits and 4 decimal places
 - `status`: required (`ACTIVE`, `INACTIVE` — see `ProductStatus`)
@@ -202,7 +262,9 @@ curl -X DELETE http://localhost:8080/api/v1/products/{id}
 - `direction`: `asc`/`desc`
 
 ### Persistence constraints (`Product` entity)
-- `id`, `name`, `price`, `status` are non-null
+- `id`, `name`, `price`, `status` are non-null; `description` is nullable
+- `name` is unique (`uk_product_name`) — enforced by a pre-save check (`DuplicateProductNameException` → `409`) and backed by a database constraint as a race-condition safety net
+- `createdOn`/`updatedOn`/`createdBy`/`updatedBy` are populated automatically (see [Auditing & Change History](#auditing--change-history)) and are non-null
 - database indexes on `name` and `status`
 
 ## Error Contract
@@ -237,6 +299,33 @@ Not found (`404 Not Found`):
   "fieldErrors": {}
 }
 ```
+
+Duplicate name (`409 Conflict`):
+
+```json
+{
+  "timestamp": "2026-09-11T13:47:43Z",
+  "status": 409,
+  "error": "Conflict",
+  "message": "Product name already exists: Wireless Mouse Pro",
+  "path": "/api/v1/products",
+  "fieldErrors": {}
+}
+```
+
+## Auditing & Change History
+
+Every product tracks `createdOn`, `updatedOn`, `createdBy`, and `updatedBy` on the entity itself (populated via Spring Data JPA auditing — `@CreatedDate`/`@LastModifiedDate`/`@CreatedBy`/`@LastModifiedBy` on `Product`, activated by `@EnableJpaAuditing`) and returns them on every response.
+
+The "current user" is resolved by `AuditorAwareImpl` (`config` package) from an `X-User-Name` request header, falling back to a dummy `postman-user` default when the header is absent — there's no authentication layer yet, so this is a stand-in a Postman collection (or any caller) can set to attribute changes to a real name.
+
+Beyond the latest-value fields on `Product`, every create/update/delete appends an immutable snapshot to a separate `product_audit` table (`ProductAudit` entity, `ProductAuditAction` enum: `CREATED`/`UPDATED`/`DELETED`), retrievable via `GET /api/v1/products/{id}/audit`. This table:
+
+- has no foreign key back to `products`, so a row's history is never lost when the product itself is deleted
+- is written in the same transaction as the change it records, so the two can never disagree
+- is ordered most-recent-first (`findAllByProductIdOrderByPerformedOnDesc`)
+
+`products` remains a "latest value only" table — full history lives exclusively in `product_audit`.
 
 ## Idempotency
 
@@ -278,15 +367,20 @@ See `src/main/resources/application.yml`:
 | Test | Verifies |
 |---|---|
 | `shouldCreateProductAndNormalizeName` | create() normalizes whitespace in `name` and persists the product |
-| `shouldUpdateExistingProduct` | update() applies new name/price/status to an existing product |
+| `shouldRejectDuplicateNameOnCreate` | create() throws `DuplicateProductNameException` when the name already exists, without calling `repository.save()` |
+| `shouldUpdateExistingProduct` | update() applies new name/description/price/status to an existing product |
+| `shouldRejectDuplicateNameOnUpdate` | update() throws `DuplicateProductNameException` when renaming to another product's name |
 | `shouldThrow404WhenProductDoesNotExist` | getById() throws `ProductNotFoundException` for an unknown id |
 | `shouldNotDeleteUnknownProduct` | delete() throws `ProductNotFoundException` and never calls `repository.delete()` for an unknown id |
+| `shouldRecordAuditEntryOnDelete` | delete() records a `DELETED` audit entry before removing the product |
 
 ### `ProductControllerTest`
 
 | Test | Verifies |
 |---|---|
-| `shouldCreateGetUpdateAndDeleteProduct` | Full CRUD lifecycle: 201 on create, 200 on get/update, 204 on delete, 404 on get after delete |
+| `shouldCreateGetUpdateAndDeleteProduct` | Full CRUD lifecycle: 201 on create (with audit fields via `X-User-Name`), 200 on get/update, audit history reflects CREATED/UPDATED/DELETED, 204 on delete, 404 on get after delete |
+| `shouldRejectDuplicateProductName` | Creating a product with a name that already exists → 409 |
+| `shouldRejectRenamingToAnExistingProductName` | Updating a product to another product's name → 409 |
 | `shouldRejectBlankName` | Blank `name` → 400 with `fieldErrors.name` |
 | `shouldRejectNullNamePriceAndStatus` | `name`, `price`, `status` all `null` → 400 with all three field errors |
 | `shouldRejectZeroPrice` | `price = 0` → 400 with `fieldErrors.price` |
@@ -304,8 +398,8 @@ See `src/main/resources/application.yml`:
 
 A Postman collection is included for manual end-to-end verification against a running instance:
 
-- `postman/product-catalog-api.postman_collection.json` — 21 requests covering full CRUD, validation, pagination, sorting, and error handling, each with built-in `pm.test` assertions.
-- `postman/API_TEST_RESULTS.md` — recorded results from running the collection against a freshly started instance (21/21 passed).
+- `postman/product-catalog-api.postman_collection.json` — 32 requests across 8 folders covering full CRUD, `description`, validation, pagination, sorting, name-uniqueness conflicts, audit history, and error handling, each with built-in `pm.test` assertions.
+- `postman/API_TEST_RESULTS.md` — recorded results from an earlier run of the original CRUD-only collection; not yet regenerated for the `description`/uniqueness/audit additions.
 
 To reproduce: start the app (`./gradlew bootRun`), import the collection into Postman, and run it top-to-bottom via **Run Collection** (the "0 - Empty List" folder must run first, against a fresh in-memory H2 database).
 
@@ -384,28 +478,34 @@ product-catalog-api/
 │   │   │       │   └── ApiPaths.java
 │   │   │       │
 │   │   │       ├── config/
-│   │   │       │   └── H2ConsoleConfig.java        # standalone H2 web console (port 8090)
+│   │   │       │   ├── H2ConsoleConfig.java        # standalone H2 web console (port 8090)
+│   │   │       │   └── AuditorAwareImpl.java       # resolves createdBy/updatedBy from X-User-Name
 │   │   │       │
 │   │   │       ├── service/
 │   │   │       │   ├── ProductService.java        # interface — controller depends on this
 │   │   │       │   └── ProductServiceImpl.java     # implementation
 │   │   │       │
 │   │   │       ├── repository/
-│   │   │       │   └── ProductRepository.java
+│   │   │       │   ├── ProductRepository.java
+│   │   │       │   └── ProductAuditRepository.java
 │   │   │       │
 │   │   │       ├── entity/
 │   │   │       │   ├── Product.java
-│   │   │       │   └── ProductStatus.java
+│   │   │       │   ├── ProductStatus.java
+│   │   │       │   ├── ProductAudit.java           # immutable change-log row
+│   │   │       │   └── ProductAuditAction.java     # CREATED / UPDATED / DELETED
 │   │   │       │
 │   │   │       ├── dto/
 │   │   │       │   ├── ProductRequest.java
-│   │   │       │   └── ProductResponse.java
+│   │   │       │   ├── ProductResponse.java
+│   │   │       │   └── ProductAuditResponse.java
 │   │   │       │
 │   │   │       ├── exception/
 │   │   │       │   ├── ApiError.java
 │   │   │       │   ├── ErrorMessages.java
 │   │   │       │   ├── GlobalExceptionHandler.java
-│   │   │       │   └── ProductNotFoundException.java
+│   │   │       │   ├── ProductNotFoundException.java
+│   │   │       │   └── DuplicateProductNameException.java
 │   │   │       │
 │   │   │       ├── web/
 │   │   │       │   └── PageableFactory.java        # builds Pageable from page/size/sortBy/direction
