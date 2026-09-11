@@ -12,6 +12,13 @@ public final class ApiConstants {
     public static final int MAX_SIZE = 100;
 
     /**
+     * Header a caller (e.g. a Postman collection) can set to identify who is making the
+     * request, so it can be recorded in {@code createdBy}/{@code updatedBy} audit columns.
+     */
+    public static final String USER_NAME_HEADER = "X-User-Name";
+    public static final String DEFAULT_USER_NAME = "postman-user";
+
+    /**
      * Prevents instantiation.
      */
     private ApiConstants() {

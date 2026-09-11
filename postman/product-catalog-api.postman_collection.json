@@ -1,13 +1,15 @@
 {
   "info": {
     "name": "Product Catalog API",
-    "description": "Full CRUD + validation + error-handling scenario coverage for the Product Catalog API. Run the whole collection top-to-bottom against a freshly restarted app (in-memory H2 is wiped on restart) so the '0 - Empty List' folder sees a genuinely empty catalog.",
+    "description": "Full CRUD + validation + error-handling scenario coverage for the Product Catalog API. Covers the optional `description` field, unique product names, `X-User-Name`-driven audit fields (createdBy/updatedBy/createdOn/updatedOn) and the `/audit` change-history endpoint. Run the whole collection top-to-bottom against a freshly restarted app (in-memory H2 is wiped on restart) so the '0 - Empty List' folder sees a genuinely empty catalog.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8080" },
     { "key": "productId", "value": "" },
-    { "key": "tempProductId", "value": "" }
+    { "key": "tempProductId", "value": "" },
+    { "key": "uniqueProductAId", "value": "" },
+    { "key": "uniqueProductBId", "value": "" }
   ],
   "item": [
     {
@@ -40,11 +42,14 @@
           "name": "Create product -> 201",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Name", "value": "alice" }
+            ],
             "url": "{{baseUrl}}/api/v1/products",
             "body": {
               "mode": "raw",
-              "raw": "{\"name\":\"Wireless Mouse\",\"price\":19.99,\"status\":\"ACTIVE\"}"
+              "raw": "{\"name\":\"Wireless Mouse\",\"description\":\"Ergonomic wireless mouse with USB receiver\",\"price\":19.99,\"status\":\"ACTIVE\"}"
             }
           },
           "event": [
@@ -57,8 +62,37 @@
                   "const json = pm.response.json();",
                   "pm.test('Response has generated id', () => pm.expect(json.id).to.be.a('string'));",
                   "pm.test('name matches request', () => pm.expect(json.name).to.eql('Wireless Mouse'));",
+                  "pm.test('description matches request', () => pm.expect(json.description).to.eql('Ergonomic wireless mouse with USB receiver'));",
                   "pm.test('status matches request', () => pm.expect(json.status).to.eql('ACTIVE'));",
+                  "pm.test('createdBy reflects X-User-Name header', () => pm.expect(json.createdBy).to.eql('alice'));",
+                  "pm.test('updatedBy reflects X-User-Name header', () => pm.expect(json.updatedBy).to.eql('alice'));",
+                  "pm.test('createdOn is present', () => pm.expect(json.createdOn).to.be.a('string'));",
+                  "pm.test('updatedOn is present', () => pm.expect(json.updatedOn).to.be.a('string'));",
                   "pm.collectionVariables.set('productId', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create product with no description -> 201 (description is optional)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"No Description Product\",\"price\":15.00,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('description is null when omitted', () => pm.expect(json.description).to.be.null);"
                 ]
               }
             }
@@ -109,6 +143,30 @@
                   "pm.test('fieldErrors.name present', () => pm.expect(json.fieldErrors).to.have.property('name'));",
                   "pm.test('fieldErrors.price present', () => pm.expect(json.fieldErrors).to.have.property('price'));",
                   "pm.test('fieldErrors.status present', () => pm.expect(json.fieldErrors).to.have.property('status'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create product with description over 1000 characters -> 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Widget\",\"description\":\"{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}{{$randomLoremParagraphs}}\",\"price\":10.00,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test('fieldErrors.description present', () => pm.expect(json.fieldErrors).to.have.property('description'));"
                 ]
               }
             }
@@ -204,7 +262,8 @@
                 "exec": [
                   "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
                   "const json = pm.response.json();",
-                  "pm.test('id matches requested id', () => pm.expect(json.id).to.eql(pm.collectionVariables.get('productId')));"
+                  "pm.test('id matches requested id', () => pm.expect(json.id).to.eql(pm.collectionVariables.get('productId')));",
+                  "pm.test('createdBy carried over from creation', () => pm.expect(json.createdBy).to.eql('alice'));"
                 ]
               }
             }
@@ -353,11 +412,14 @@
           "name": "Update product -> 200",
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Name", "value": "bob" }
+            ],
             "url": "{{baseUrl}}/api/v1/products/{{productId}}",
             "body": {
               "mode": "raw",
-              "raw": "{\"name\":\"Wireless Mouse Pro\",\"price\":24.99,\"status\":\"INACTIVE\"}"
+              "raw": "{\"name\":\"Wireless Mouse Pro\",\"description\":\"Ergonomic wireless mouse, now with a faster sensor\",\"price\":24.99,\"status\":\"INACTIVE\"}"
             }
           },
           "event": [
@@ -368,7 +430,10 @@
                   "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
                   "const json = pm.response.json();",
                   "pm.test('name updated', () => pm.expect(json.name).to.eql('Wireless Mouse Pro'));",
-                  "pm.test('status updated', () => pm.expect(json.status).to.eql('INACTIVE'));"
+                  "pm.test('description updated', () => pm.expect(json.description).to.eql('Ergonomic wireless mouse, now with a faster sensor'));",
+                  "pm.test('status updated', () => pm.expect(json.status).to.eql('INACTIVE'));",
+                  "pm.test('createdBy unchanged by update', () => pm.expect(json.createdBy).to.eql('alice'));",
+                  "pm.test('updatedBy reflects new X-User-Name header', () => pm.expect(json.updatedBy).to.eql('bob'));"
                 ]
               }
             }
@@ -421,7 +486,179 @@
       ]
     },
     {
-      "name": "5 - Delete Product",
+      "name": "5 - Product Name Uniqueness",
+      "item": [
+        {
+          "name": "Create product A for uniqueness test -> 201",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Unique Test Product A\",\"description\":\"First uniqueness test product\",\"price\":5.00,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('uniqueProductAId', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create product B for uniqueness test -> 201",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Unique Test Product B\",\"description\":\"Second uniqueness test product\",\"price\":6.00,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('uniqueProductBId', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create product with duplicate name -> 409",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Unique Test Product A\",\"description\":\"Attempted duplicate\",\"price\":7.00,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409 Conflict', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('message explains the duplicate name', () => pm.expect(json.message).to.eql('Product name already exists: Unique Test Product A'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update product with another product's name -> 409",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products/{{uniqueProductBId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Unique Test Product A\",\"description\":\"Trying to steal a name\",\"price\":6.00,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409 Conflict', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update product keeping its own name -> 200",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products/{{uniqueProductAId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Unique Test Product A\",\"description\":\"Updated but same name\",\"price\":5.50,\"status\":\"INACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK (self-rename is allowed)', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('name unchanged', () => pm.expect(json.name).to.eql('Unique Test Product A'));",
+                  "pm.test('status updated', () => pm.expect(json.status).to.eql('INACTIVE'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 - Product Audit History",
+      "item": [
+        {
+          "name": "Get audit history for product -> 200 (CREATED + UPDATED)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products/{{productId}}/audit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('history has one entry per change', () => pm.expect(json.length).to.eql(2));",
+                  "pm.test('most recent entry is the update', () => pm.expect(json[0].action).to.eql('UPDATED'));",
+                  "pm.test('most recent entry was performed by bob', () => pm.expect(json[0].performedBy).to.eql('bob'));",
+                  "pm.test('oldest entry is the creation', () => pm.expect(json[1].action).to.eql('CREATED'));",
+                  "pm.test('oldest entry was performed by alice', () => pm.expect(json[1].performedBy).to.eql('alice'));",
+                  "pm.test('entries carry the product id', () => pm.expect(json[0].productId).to.eql(pm.collectionVariables.get('productId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get audit history for unknown product -> 200 empty array",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products/{{$guid}}/audit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('history is empty', () => pm.expect(json.length).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7 - Delete Product",
       "item": [
         {
           "name": "Create temp product for delete scenario -> 201",
@@ -476,6 +713,27 @@
               "script": {
                 "exec": [
                   "pm.test('Status is 404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get audit history after delete -> 200 still shows full history",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products/{{tempProductId}}/audit"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK (main table row is gone, audit history survives)', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('history has CREATED and DELETED entries', () => pm.expect(json.length).to.eql(2));",
+                  "pm.test('most recent entry is the deletion', () => pm.expect(json[0].action).to.eql('DELETED'));",
+                  "pm.test('oldest entry is the creation', () => pm.expect(json[1].action).to.eql('CREATED'));"
                 ]
               }
             }

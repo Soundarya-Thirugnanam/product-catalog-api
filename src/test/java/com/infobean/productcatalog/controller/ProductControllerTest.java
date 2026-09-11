@@ -40,14 +40,20 @@ class ProductControllerTest {
     @Test
     void shouldCreateGetUpdateAndDeleteProduct() throws Exception {
         ProductRequest createRequest =
-                new ProductRequest("Laptop", new BigDecimal("999.99"), ProductStatus.ACTIVE);
+                new ProductRequest("Laptop", "A powerful laptop", new BigDecimal("999.99"), ProductStatus.ACTIVE);
 
         String body = mockMvc.perform(post(ApiPaths.PRODUCTS)
+                        .header("X-User-Name", "alice")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name", is("Laptop")))
+                .andExpect(jsonPath("$.description", is("A powerful laptop")))
                 .andExpect(jsonPath("$.status", is("ACTIVE")))
+                .andExpect(jsonPath("$.createdBy", is("alice")))
+                .andExpect(jsonPath("$.updatedBy", is("alice")))
+                .andExpect(jsonPath("$.createdOn").exists())
+                .andExpect(jsonPath("$.updatedOn").exists())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -60,20 +66,84 @@ class ProductControllerTest {
                 .andExpect(jsonPath("$.id", is(id)));
 
         ProductRequest updateRequest =
-                new ProductRequest("Updated Laptop", new BigDecimal("1099.99"), ProductStatus.INACTIVE);
+                new ProductRequest("Updated Laptop", "An even better laptop", new BigDecimal("1099.99"), ProductStatus.INACTIVE);
 
         mockMvc.perform(put(ApiPaths.PRODUCTS + "/{id}", id)
+                        .header("X-User-Name", "bob")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name", is("Updated Laptop")))
-                .andExpect(jsonPath("$.status", is("INACTIVE")));
+                .andExpect(jsonPath("$.description", is("An even better laptop")))
+                .andExpect(jsonPath("$.status", is("INACTIVE")))
+                .andExpect(jsonPath("$.createdBy", is("alice")))
+                .andExpect(jsonPath("$.updatedBy", is("bob")));
+
+        mockMvc.perform(get(ApiPaths.PRODUCTS + "/{id}/audit", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", is(2)))
+                .andExpect(jsonPath("$[0].action", is("UPDATED")))
+                .andExpect(jsonPath("$[1].action", is("CREATED")));
 
         mockMvc.perform(delete(ApiPaths.PRODUCTS + "/{id}", id))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get(ApiPaths.PRODUCTS + "/{id}", id))
                 .andExpect(status().isNotFound());
+
+        mockMvc.perform(get(ApiPaths.PRODUCTS + "/{id}/audit", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", is(3)))
+                .andExpect(jsonPath("$[0].action", is("DELETED")));
+    }
+
+    /**
+     * A product name must be unique across the catalog.
+     */
+    @Test
+    void shouldRejectDuplicateProductName() throws Exception {
+        ProductRequest request =
+                new ProductRequest("Unique Widget", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
+
+        mockMvc.perform(post(ApiPaths.PRODUCTS)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post(ApiPaths.PRODUCTS)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message", is("Product name already exists: Unique Widget")));
+    }
+
+    /**
+     * Renaming a product to another product's name must be rejected.
+     */
+    @Test
+    void shouldRejectRenamingToAnExistingProductName() throws Exception {
+        String firstBody = mockMvc.perform(post(ApiPaths.PRODUCTS)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new ProductRequest("Rename Target", null, new BigDecimal("10.00"), ProductStatus.ACTIVE))))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        String secondBody = mockMvc.perform(post(ApiPaths.PRODUCTS)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new ProductRequest("Rename Source", null, new BigDecimal("10.00"), ProductStatus.ACTIVE))))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        String secondId = objectMapper.readTree(secondBody).get("id").asText();
+        String firstName = objectMapper.readTree(firstBody).get("name").asText();
+
+        mockMvc.perform(put(ApiPaths.PRODUCTS + "/{id}", secondId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new ProductRequest(firstName, null, new BigDecimal("10.00"), ProductStatus.ACTIVE))))
+                .andExpect(status().isConflict());
     }
 
     /**
@@ -82,7 +152,7 @@ class ProductControllerTest {
     @Test
     void shouldRejectBlankName() throws Exception {
         ProductRequest request =
-                new ProductRequest(" ", new BigDecimal("10.00"), ProductStatus.ACTIVE);
+                new ProductRequest(" ", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
 
         mockMvc.perform(post(ApiPaths.PRODUCTS)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -97,7 +167,7 @@ class ProductControllerTest {
     @Test
     void shouldRejectNullNamePriceAndStatus() throws Exception {
         ProductRequest request =
-                new ProductRequest(null, null, null);
+                new ProductRequest(null, null, null, null);
 
         mockMvc.perform(post(ApiPaths.PRODUCTS)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -114,7 +184,7 @@ class ProductControllerTest {
     @Test
     void shouldRejectZeroPrice() throws Exception {
         ProductRequest request =
-                new ProductRequest("Laptop", BigDecimal.ZERO, ProductStatus.ACTIVE);
+                new ProductRequest("Laptop", null, BigDecimal.ZERO, ProductStatus.ACTIVE);
 
         mockMvc.perform(post(ApiPaths.PRODUCTS)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -129,7 +199,7 @@ class ProductControllerTest {
     @Test
     void shouldRejectNegativePrice() throws Exception {
         ProductRequest request =
-                new ProductRequest("Laptop", new BigDecimal("-1"), ProductStatus.ACTIVE);
+                new ProductRequest("Laptop", null, new BigDecimal("-1"), ProductStatus.ACTIVE);
 
         mockMvc.perform(post(ApiPaths.PRODUCTS)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -154,7 +224,7 @@ class ProductControllerTest {
     @Test
     void shouldReturn404WhenUpdatingUnknownProduct() throws Exception {
         ProductRequest request =
-                new ProductRequest("Laptop", new BigDecimal("10.00"), ProductStatus.ACTIVE);
+                new ProductRequest("Laptop", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
 
         mockMvc.perform(put(ApiPaths.PRODUCTS + "/{id}", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -192,7 +262,7 @@ class ProductControllerTest {
         mockMvc.perform(post(ApiPaths.PRODUCTS)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(
-                        new ProductRequest("Pagination Product", new BigDecimal("5.00"), ProductStatus.ACTIVE))));
+                        new ProductRequest("Pagination Product", null, new BigDecimal("5.00"), ProductStatus.ACTIVE))));
 
         mockMvc.perform(get(ApiPaths.PRODUCTS)
                         .param("page", "0")

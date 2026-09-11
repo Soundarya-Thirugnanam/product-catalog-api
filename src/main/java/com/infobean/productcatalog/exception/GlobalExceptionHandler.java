@@ -2,6 +2,7 @@ package com.infobean.productcatalog.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -106,6 +107,39 @@ public class GlobalExceptionHandler {
         return build(
                 HttpStatus.NOT_FOUND,
                 exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    /**
+     * Handles an attempt to create or rename a product to a name already in use.
+     */
+    @ExceptionHandler(DuplicateProductNameException.class)
+    public ResponseEntity<ApiError> handleDuplicateProductName(
+            DuplicateProductNameException exception,
+            HttpServletRequest request) {
+
+        return build(
+                HttpStatus.CONFLICT,
+                exception.getMessage(),
+                request.getRequestURI(),
+                Map.of()
+        );
+    }
+
+    /**
+     * Handles a database constraint violation, most notably a name-uniqueness race
+     * that slips past the pre-save check under concurrent requests.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataIntegrityViolation(
+            DataIntegrityViolationException exception,
+            HttpServletRequest request) {
+
+        return build(
+                HttpStatus.CONFLICT,
+                ErrorMessages.DATA_INTEGRITY_VIOLATION,
                 request.getRequestURI(),
                 Map.of()
         );

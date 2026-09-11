@@ -3,14 +3,19 @@ package com.infobean.productcatalog.service;
 import com.infobean.productcatalog.dto.ProductRequest;
 import com.infobean.productcatalog.dto.ProductResponse;
 import com.infobean.productcatalog.entity.Product;
+import com.infobean.productcatalog.entity.ProductAudit;
+import com.infobean.productcatalog.entity.ProductAuditAction;
 import com.infobean.productcatalog.entity.ProductStatus;
+import com.infobean.productcatalog.exception.DuplicateProductNameException;
 import com.infobean.productcatalog.exception.ProductNotFoundException;
+import com.infobean.productcatalog.repository.ProductAuditRepository;
 import com.infobean.productcatalog.repository.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.domain.AuditorAware;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -26,6 +31,12 @@ class ProductServiceTest {
     @Mock
     private ProductRepository repository;
 
+    @Mock
+    private ProductAuditRepository auditRepository;
+
+    @Mock
+    private AuditorAware<String> auditorAware;
+
     private ProductService service;
 
     /**
@@ -33,7 +44,8 @@ class ProductServiceTest {
      */
     @BeforeEach
     void setUp() {
-        service = new ProductServiceImpl(repository);
+        service = new ProductServiceImpl(repository, auditRepository, auditorAware);
+        lenient().when(auditorAware.getCurrentAuditor()).thenReturn(Optional.of("test-user"));
     }
 
     /**
@@ -42,22 +54,42 @@ class ProductServiceTest {
     @Test
     void shouldCreateProductAndNormalizeName() {
         ProductRequest request =
-                new ProductRequest("  Gaming   Laptop  ", new BigDecimal("999.9900"), ProductStatus.ACTIVE);
+                new ProductRequest("  Gaming   Laptop  ", "A great laptop", new BigDecimal("999.9900"), ProductStatus.ACTIVE);
 
         Product saved = Product.create(
                 "Gaming Laptop",
+                "A great laptop",
                 new BigDecimal("999.9900"),
                 ProductStatus.ACTIVE
         );
 
+        when(repository.existsByName("Gaming Laptop")).thenReturn(false);
         when(repository.save(any(Product.class))).thenReturn(saved);
 
         ProductResponse response = service.create(request);
 
         assertThat(response.name()).isEqualTo("Gaming Laptop");
+        assertThat(response.description()).isEqualTo("A great laptop");
         assertThat(response.price()).isEqualByComparingTo("999.99");
         assertThat(response.status()).isEqualTo(ProductStatus.ACTIVE);
         verify(repository).save(any(Product.class));
+        verify(auditRepository).save(argThat(audit -> audit.getAction() == ProductAuditAction.CREATED));
+    }
+
+    /**
+     * Creating a product with a name that already exists must be rejected.
+     */
+    @Test
+    void shouldRejectDuplicateNameOnCreate() {
+        ProductRequest request =
+                new ProductRequest("Existing", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
+
+        when(repository.existsByName("Existing")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(DuplicateProductNameException.class);
+
+        verify(repository, never()).save(any());
     }
 
     /**
@@ -68,20 +100,44 @@ class ProductServiceTest {
         UUID id = UUID.randomUUID();
         Product product = Product.create(
                 "Old",
+                "Old description",
                 new BigDecimal("10.00"),
                 ProductStatus.INACTIVE
         );
 
         when(repository.findById(id)).thenReturn(Optional.of(product));
+        when(repository.existsByNameAndIdNot("New Product", id)).thenReturn(false);
+        when(repository.saveAndFlush(any(Product.class))).thenReturn(product);
 
         ProductResponse response = service.update(
                 id,
-                new ProductRequest(" New Product ", new BigDecimal("20.00"), ProductStatus.ACTIVE)
+                new ProductRequest(" New Product ", " New description ", new BigDecimal("20.00"), ProductStatus.ACTIVE)
         );
 
         assertThat(response.name()).isEqualTo("New Product");
+        assertThat(response.description()).isEqualTo("New description");
         assertThat(response.price()).isEqualByComparingTo("20.00");
         assertThat(response.status()).isEqualTo(ProductStatus.ACTIVE);
+        verify(auditRepository).save(argThat(audit -> audit.getAction() == ProductAuditAction.UPDATED));
+    }
+
+    /**
+     * Renaming a product to a name already used by another product must be rejected.
+     */
+    @Test
+    void shouldRejectDuplicateNameOnUpdate() {
+        UUID id = UUID.randomUUID();
+        Product product = Product.create("Old", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
+
+        when(repository.findById(id)).thenReturn(Optional.of(product));
+        when(repository.existsByNameAndIdNot("Taken", id)).thenReturn(true);
+
+        ProductRequest request = new ProductRequest("Taken", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
+
+        assertThatThrownBy(() -> service.update(id, request))
+                .isInstanceOf(DuplicateProductNameException.class);
+
+        verify(repository, never()).saveAndFlush(any());
     }
 
     /**
@@ -109,5 +165,21 @@ class ProductServiceTest {
                 .isInstanceOf(ProductNotFoundException.class);
 
         verify(repository, never()).delete(any());
+    }
+
+    /**
+     * Deleting a product must still record a DELETED audit entry.
+     */
+    @Test
+    void shouldRecordAuditEntryOnDelete() {
+        UUID id = UUID.randomUUID();
+        Product product = Product.create("Old", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
+
+        when(repository.findById(id)).thenReturn(Optional.of(product));
+
+        service.delete(id);
+
+        verify(auditRepository).save(argThat(audit -> audit.getAction() == ProductAuditAction.DELETED));
+        verify(repository).delete(product);
     }
 }

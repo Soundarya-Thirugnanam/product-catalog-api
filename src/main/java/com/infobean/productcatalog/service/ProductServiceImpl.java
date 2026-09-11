@@ -1,16 +1,24 @@
 package com.infobean.productcatalog.service;
 
+import com.infobean.productcatalog.constants.ApiConstants;
+import com.infobean.productcatalog.dto.ProductAuditResponse;
 import com.infobean.productcatalog.dto.ProductRequest;
 import com.infobean.productcatalog.dto.ProductResponse;
 import com.infobean.productcatalog.entity.Product;
+import com.infobean.productcatalog.entity.ProductAudit;
+import com.infobean.productcatalog.entity.ProductAuditAction;
 import com.infobean.productcatalog.entity.ProductStatus;
+import com.infobean.productcatalog.exception.DuplicateProductNameException;
 import com.infobean.productcatalog.exception.ProductNotFoundException;
+import com.infobean.productcatalog.repository.ProductAuditRepository;
 import com.infobean.productcatalog.repository.ProductRepository;
+import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -18,27 +26,44 @@ import java.util.UUID;
 public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository repository;
+    private final ProductAuditRepository auditRepository;
+    private final AuditorAware<String> auditorAware;
 
     /**
-     * Creates the service with its repository dependency.
+     * Creates the service with its repository dependencies.
      */
-    public ProductServiceImpl(ProductRepository repository) {
+    public ProductServiceImpl(ProductRepository repository, ProductAuditRepository auditRepository,
+                               AuditorAware<String> auditorAware) {
         this.repository = repository;
+        this.auditRepository = auditRepository;
+        this.auditorAware = auditorAware;
     }
 
     /**
      * Creates and persists a new product from the given request.
+     *
+     * @throws DuplicateProductNameException if a product with this name already exists
      */
     @Override
     @Transactional
     public ProductResponse create(ProductRequest request) {
+        String name = normalizeName(request.name());
+
+        if (repository.existsByName(name)) {
+            throw new DuplicateProductNameException(name);
+        }
+
         Product product = Product.create(
-                normalizeName(request.name()),
+                name,
+                normalizeDescription(request.description()),
                 request.price(),
                 request.status()
         );
 
-        return ProductResponse.from(repository.save(product));
+        Product saved = repository.save(product);
+        recordAudit(saved, ProductAuditAction.CREATED);
+
+        return ProductResponse.from(saved);
     }
 
     /**
@@ -68,22 +93,32 @@ public class ProductServiceImpl implements ProductService {
     /**
      * Updates an existing product with the provided details.
      *
-     * @throws ProductNotFoundException if the product does not exist
+     * @throws ProductNotFoundException      if the product does not exist
+     * @throws DuplicateProductNameException if another product already has this name
      */
-
     @Override
     @Transactional
     public ProductResponse update(UUID id, ProductRequest request) {
         Product product = repository.findById(id)
                 .orElseThrow(() -> new ProductNotFoundException(id));
 
+        String name = normalizeName(request.name());
+
+        if (repository.existsByNameAndIdNot(name, id)) {
+            throw new DuplicateProductNameException(name);
+        }
+
         product.update(
-                normalizeName(request.name()),
+                name,
+                normalizeDescription(request.description()),
                 request.price(),
                 request.status()
         );
 
-        return ProductResponse.from(product);
+        Product updated = repository.saveAndFlush(product);
+        recordAudit(updated, ProductAuditAction.UPDATED);
+
+        return ProductResponse.from(updated);
     }
 
     /**
@@ -97,7 +132,26 @@ public class ProductServiceImpl implements ProductService {
         Product product = repository.findById(id)
                 .orElseThrow(() -> new ProductNotFoundException(id));
 
+        recordAudit(product, ProductAuditAction.DELETED);
         repository.delete(product);
+    }
+
+    /**
+     * Lists a product's full change history, most recent first.
+     */
+    @Override
+    public List<ProductAuditResponse> getAuditHistory(UUID productId) {
+        return auditRepository.findAllByProductIdOrderByPerformedOnDesc(productId).stream()
+                .map(ProductAuditResponse::from)
+                .toList();
+    }
+
+    /**
+     * Appends an audit log entry snapshotting the product's current state.
+     */
+    private void recordAudit(Product product, ProductAuditAction action) {
+        String performedBy = auditorAware.getCurrentAuditor().orElse(ApiConstants.DEFAULT_USER_NAME);
+        auditRepository.save(ProductAudit.of(product, action, performedBy));
     }
 
     /**
@@ -105,5 +159,12 @@ public class ProductServiceImpl implements ProductService {
      */
     private String normalizeName(String name) {
         return name.trim().replaceAll("\\s+", " ");
+    }
+
+    /**
+     * Trims an optional description, leaving {@code null} as-is.
+     */
+    private String normalizeDescription(String description) {
+        return description == null ? null : description.trim();
     }
 }

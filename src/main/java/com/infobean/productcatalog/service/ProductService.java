@@ -1,11 +1,13 @@
 package com.infobean.productcatalog.service;
 
+import com.infobean.productcatalog.dto.ProductAuditResponse;
 import com.infobean.productcatalog.dto.ProductRequest;
 import com.infobean.productcatalog.dto.ProductResponse;
 import com.infobean.productcatalog.entity.ProductStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface ProductService {
@@ -34,4 +36,9 @@ public interface ProductService {
      * Removes a product by id.
      */
     void delete(UUID id);
+
+    /**
+     * Lists a product's full change history, most recent first.
+     */
+    List<ProductAuditResponse> getAuditHistory(UUID productId);
 }

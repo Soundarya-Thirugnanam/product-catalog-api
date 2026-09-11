@@ -1,6 +1,7 @@
 package com.infobean.productcatalog.controller;
 
 import com.infobean.productcatalog.constants.ApiConstants;
+import com.infobean.productcatalog.dto.ProductAuditResponse;
 import com.infobean.productcatalog.dto.ProductRequest;
 import com.infobean.productcatalog.dto.ProductResponse;
 import com.infobean.productcatalog.entity.ProductStatus;
@@ -16,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -101,5 +103,14 @@ public class ProductController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         service.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Lists a product's full change history (create/update/delete), most recent first.
+     * Kept available even after the product itself has been deleted.
+     */
+    @GetMapping("/{id}/audit")
+    public ResponseEntity<List<ProductAuditResponse>> getAuditHistory(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.getAuditHistory(id));
     }
 }
