@@ -11,6 +11,7 @@ A production-style REST API for managing DHL's product catalog, built to demonst
 - Spring Validation
 - Spring Data JPA
 - H2 (in-memory, local/test persistence)
+- Redis (cache-aside layer for product lookups)
 - Spring Boot Actuator
 - JUnit 5, Mockito, MockMvc
 
@@ -18,10 +19,14 @@ A production-style REST API for managing DHL's product catalog, built to demonst
 
 - JDK 25 (or let the Gradle toolchain resolve/download it)
 - No local Gradle install required — use the included wrapper (`gradlew` / `gradlew.bat`)
+- Docker, to run Redis locally via the included `docker-compose.yml` (only needed for `bootRun`; the test suite doesn't require Redis)
 
 ## Quick Start
 
 ```bash
+# start Redis (required for bootRun; not needed for tests)
+docker compose up -d redis
+
 # run tests
 ./gradlew test
 
@@ -130,7 +135,7 @@ Base path: `/api/v1/products`
 | Read | `GET /api/v1/products/{id}` | 200 OK |
 | List | `GET /api/v1/products` | 200 OK (non-empty) / 204 No Content (empty) |
 | Update | `PUT /api/v1/products/{id}` | 200 OK |
-| Delete | `DELETE /api/v1/products/{id}` | 204 No Content |
+| Delete (soft) | `DELETE /api/v1/products/{id}` | 204 No Content |
 | Audit history | `GET /api/v1/products/{id}/audit` | 200 OK (always — empty array if none) |
 
 ### Create a product
@@ -203,6 +208,9 @@ curl -X PUT http://localhost:8080/api/v1/products/{id} \
 
 ### Delete a product
 
+Deletion is a soft delete (see [Soft Delete](#soft-delete)): the row is kept and marked
+deleted rather than removed, so it disappears from `GET`s but its audit trail survives.
+
 ```bash
 curl -X DELETE http://localhost:8080/api/v1/products/{id}
 ```
@@ -263,8 +271,9 @@ since "no history" is a valid answer.
 
 ### Persistence constraints (`Product` entity)
 - `id`, `name`, `price`, `status` are non-null; `description` is nullable
-- `name` is unique (`uk_product_name`) — enforced by a pre-save check (`DuplicateProductNameException` → `409`) and backed by a database constraint as a race-condition safety net
+- `name` is unique among active products — enforced by a pre-save check (`DuplicateProductNameException` → `409`) and backed by a database constraint (`uk_product_unique_name`) as a race-condition safety net; see [Soft Delete](#soft-delete) for how a deleted product's name becomes reusable
 - `createdOn`/`updatedOn`/`createdBy`/`updatedBy` are populated automatically (see [Auditing & Change History](#auditing--change-history)) and are non-null
+- `deleted` (default `false`) drives soft delete — see [Soft Delete](#soft-delete)
 - database indexes on `name` and `status`
 
 ## Error Contract
@@ -327,6 +336,36 @@ Beyond the latest-value fields on `Product`, every create/update/delete appends 
 
 `products` remains a "latest value only" table — full history lives exclusively in `product_audit`.
 
+## Soft Delete
+
+`DELETE /api/v1/products/{id}` does not remove the row: `ProductServiceImpl.delete` records a `DELETED` audit entry, then sets `Product.deleted = true` and saves the row instead of calling `repository.delete(...)`.
+
+Every read path filters `deleted = false`:
+
+- `GET /api/v1/products/{id}` (`findByIdAndDeletedFalse`) and `PUT /api/v1/products/{id}` (also `findByIdAndDeletedFalse`) return `404 Not Found` for a deleted product, exactly as they would for one that never existed — including a second `DELETE` of the same id.
+- `GET /api/v1/products` (`findAllByDeletedFalse` / `findAllByStatusAndDeletedFalse`) excludes deleted products from every page.
+
+`GET /api/v1/products/{id}/audit` is the one exception: it's keyed off `product_audit`, which has no `deleted` concept and no foreign key back to `products`, so a product's full CREATED/UPDATED/DELETED history stays visible after deletion (see [Auditing & Change History](#auditing--change-history)).
+
+The Redis cache entry for a deleted id is evicted the same way an updated one is (`@CacheEvict` on `delete`), so a `GET` right after a `DELETE` can't serve a stale cached value.
+
+### Reusing a deleted product's name
+
+`name` still needs to be unique among *active* products, but a deleted product's name is free for a new product to reuse. This is handled with a second column, `unique_name`, which the `Product` entity keeps mirroring `name` while the product is active:
+
+- `Product.create(...)` and `Product.update(...)` set `uniqueName = name`.
+- `Product.markDeleted()` sets `uniqueName = null`.
+
+The unique constraint (`uk_product_unique_name`) is on `unique_name`, not `name` — and standard SQL unique constraints don't treat `NULL` as conflicting with anything (including other `NULL`s), so once a product is deleted, its row no longer occupies that name in the constraint, no matter how many other deleted products share it. `existsByUniqueName`/`existsByUniqueNameAndIdNot` (used by the create/update duplicate-name checks) query this same column, so the Java-level check and the database constraint always agree.
+
+## Caching
+
+`GET /api/v1/products/{id}` is cache-aside through Redis: `ProductServiceImpl.getById` is `@Cacheable` keyed by product id, and `update`/`delete` are `@CacheEvict` on that same key so a stale value is never served after a write. `create` doesn't need an eviction, since a newly created id can't already be cached. The paginated list endpoint (`GET /api/v1/products`) is intentionally not cached — the key space (status/page/size/sort/direction combinations) is too wide for cache-aside to pay off.
+
+`RedisCacheConfig` (`config` package) configures the cache's `CacheManager` to serialize values as JSON via `GenericJacksonJsonRedisSerializer` instead of Java serialization (`ProductResponse` is a record, which isn't `Serializable`), with a 10-minute TTL (`ApiConstants.PRODUCT_CACHE_TTL_MINUTES`) so entries self-expire even if an eviction is ever missed. Connection settings are `spring.data.redis.host`/`port` in `application.yml` (default `localhost:6379`); run `docker compose up -d redis` to start a local instance. Cache state is inspectable via `GET /actuator/caches`.
+
+Because reads now depend on Redis, an unreachable Redis will fail `GET /api/v1/products/{id}` — this is a deliberate tradeoff for this sample, not a resilience pattern; a production build would want a fallback (e.g. `@Cacheable` with `sync = true` and a circuit breaker, or a resilient `CacheErrorHandler`) so a cache outage degrades to hitting the database instead of failing the request.
+
 ## Idempotency
 
 `PUT` is designed as an idempotent operation: sending the same complete representation multiple times produces the same final resource state.
@@ -351,7 +390,7 @@ See `src/main/resources/application.yml`:
 - H2 in-memory database (`jdbc:h2:mem:productdb`), schema created via `ddl-auto: create-drop`
 - H2 standalone web console enabled at `http://localhost:8090` (see `H2ConsoleConfig`)
 - Server port `8080`, graceful shutdown
-- Actuator endpoints exposed: `health`, `info`, `metrics`
+- Actuator endpoints exposed: `health`, `info`, `metrics`, `caches`
 
 ## Testing
 
@@ -370,15 +409,17 @@ See `src/main/resources/application.yml`:
 | `shouldRejectDuplicateNameOnCreate` | create() throws `DuplicateProductNameException` when the name already exists, without calling `repository.save()` |
 | `shouldUpdateExistingProduct` | update() applies new name/description/price/status to an existing product |
 | `shouldRejectDuplicateNameOnUpdate` | update() throws `DuplicateProductNameException` when renaming to another product's name |
-| `shouldThrow404WhenProductDoesNotExist` | getById() throws `ProductNotFoundException` for an unknown id |
-| `shouldNotDeleteUnknownProduct` | delete() throws `ProductNotFoundException` and never calls `repository.delete()` for an unknown id |
-| `shouldRecordAuditEntryOnDelete` | delete() records a `DELETED` audit entry before removing the product |
+| `shouldThrow404WhenProductDoesNotExist` | getById() throws `ProductNotFoundException` for an unknown (or already-deleted) id |
+| `shouldNotDeleteUnknownProduct` | delete() throws `ProductNotFoundException` and never calls `repository.save()` for an unknown id |
+| `shouldRecordAuditEntryOnDelete` | delete() records a `DELETED` audit entry and soft-deletes the product (`repository.save()`, never `repository.delete()`) |
 
 ### `ProductControllerTest`
 
 | Test | Verifies |
 |---|---|
 | `shouldCreateGetUpdateAndDeleteProduct` | Full CRUD lifecycle: 201 on create (with audit fields via `X-User-Name`), 200 on get/update, audit history reflects CREATED/UPDATED/DELETED, 204 on delete, 404 on get after delete |
+| `shouldExcludeDeletedProductFromList` | A soft-deleted product no longer appears in `GET /api/v1/products`, not just `GET /{id}` |
+| `shouldAllowReusingNameAfterSoftDelete` | A new product can reuse a deleted product's name (`unique_name` freed on soft delete) — against the real H2 constraint, not a mock |
 | `shouldRejectDuplicateProductName` | Creating a product with a name that already exists → 409 |
 | `shouldRejectRenamingToAnExistingProductName` | Updating a product to another product's name → 409 |
 | `shouldRejectBlankName` | Blank `name` → 400 with `fieldErrors.name` |
@@ -398,8 +439,8 @@ See `src/main/resources/application.yml`:
 
 A Postman collection is included for manual end-to-end verification against a running instance:
 
-- `postman/product-catalog-api.postman_collection.json` — 32 requests across 8 folders covering full CRUD, `description`, validation, pagination, sorting, name-uniqueness conflicts, audit history, and error handling, each with built-in `pm.test` assertions.
-- `postman/API_TEST_RESULTS.md` — recorded results from an earlier run of the original CRUD-only collection; not yet regenerated for the `description`/uniqueness/audit additions.
+- `postman/product-catalog-api.postman_collection.json` — 38 requests across 9 folders covering full CRUD, `description`, validation, pagination, sorting, name-uniqueness conflicts, audit history, soft delete (list/get exclusion, audit survival, name reuse), and Redis cache behavior, each with built-in `pm.test` assertions.
+- `postman/API_TEST_RESULTS.md` — recorded results from a full run of the current collection.
 
 To reproduce: start the app (`./gradlew bootRun`), import the collection into Postman, and run it top-to-bottom via **Run Collection** (the "0 - Empty List" folder must run first, against a fresh in-memory H2 database).
 
@@ -417,13 +458,12 @@ For an actual production deployment, consider:
 8. Structured JSON logging.
 9. Micrometer metrics and distributed tracing.
 10. Rate limiting.
-11. Resilience patterns where external dependencies exist.
-12. Redis caching for high-read catalog endpoints.
-13. Outbox pattern if catalog changes publish Kafka events.
-14. Contract/integration tests using Testcontainers.
-15. CI pipeline with checkstyle/spotbugs/dependency scanning/tests.
-16. Secrets sourced from environment/secret manager.
-17. PostgreSQL indexes based on actual query patterns.
+11. Resilience patterns where external dependencies exist, notably a fallback so a Redis outage degrades reads to the database instead of failing them (see [Caching](#caching)).
+12. Outbox pattern if catalog changes publish Kafka events.
+13. Contract/integration tests using Testcontainers (including against a real Redis, not just H2).
+14. CI pipeline with checkstyle/spotbugs/dependency scanning/tests.
+15. Secrets sourced from environment/secret manager.
+16. PostgreSQL indexes based on actual query patterns.
 
 ### Concurrency
 
@@ -460,7 +500,7 @@ Then stale updates fail instead of silently overwriting newer changes.
  Search Index                 Other Services
 ```
 
-Read-heavy catalog traffic can use Redis caching, with the database as the source of truth. Kafka can publish product-created/product-updated/product-deleted events when eventual consistency is acceptable.
+Read-heavy catalog traffic already uses Redis cache-aside (see [Caching](#caching)), with the database as the source of truth; at scale this same cache sits in front of PostgreSQL. Kafka can publish product-created/product-updated/product-deleted events when eventual consistency is acceptable.
 
 ## Project Structure
 
@@ -479,7 +519,8 @@ product-catalog-api/
 │   │   │       │
 │   │   │       ├── config/
 │   │   │       │   ├── H2ConsoleConfig.java        # standalone H2 web console (port 8090)
-│   │   │       │   └── AuditorAwareImpl.java       # resolves createdBy/updatedBy from X-User-Name
+│   │   │       │   ├── AuditorAwareImpl.java       # resolves createdBy/updatedBy from X-User-Name
+│   │   │       │   └── RedisCacheConfig.java       # JSON serialization + TTL for the product cache
 │   │   │       │
 │   │   │       ├── service/
 │   │   │       │   ├── ProductService.java        # interface — controller depends on this

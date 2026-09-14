@@ -12,17 +12,19 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@TestPropertySource(properties = "spring.h2.console.enabled=false")
+@TestPropertySource(properties = {"spring.h2.console.enabled=false", "spring.cache.type=simple"})
 class ProductControllerTest {
 
     @Autowired
@@ -95,6 +97,60 @@ class ProductControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()", is(3)))
                 .andExpect(jsonPath("$[0].action", is("DELETED")));
+    }
+
+    /**
+     * A soft-deleted product must disappear from the list endpoint, not just GET-by-id.
+     */
+    @Test
+    void shouldExcludeDeletedProductFromList() throws Exception {
+        String body = mockMvc.perform(post(ApiPaths.PRODUCTS)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new ProductRequest("Soft Delete Target", null, new BigDecimal("10.00"), ProductStatus.ACTIVE))))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        String id = objectMapper.readTree(body).get("id").asText();
+
+        mockMvc.perform(delete(ApiPaths.PRODUCTS + "/{id}", id))
+                .andExpect(status().isNoContent());
+
+        MvcResult listResult = mockMvc.perform(get(ApiPaths.PRODUCTS).param("size", "100"))
+                .andReturn();
+        int listStatus = listResult.getResponse().getStatus();
+
+        assertThat(listStatus == 200 || listStatus == 204).isTrue();
+        if (listStatus == 200) {
+            assertThat(listResult.getResponse().getContentAsString()).doesNotContain(id);
+        }
+    }
+
+    /**
+     * A deleted product's name must be reusable by a new product, exercising the real
+     * database unique constraint (a mock-based test can't catch this).
+     */
+    @Test
+    void shouldAllowReusingNameAfterSoftDelete() throws Exception {
+        ProductRequest request =
+                new ProductRequest("Reusable Name", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
+
+        String firstBody = mockMvc.perform(post(ApiPaths.PRODUCTS)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        String firstId = objectMapper.readTree(firstBody).get("id").asText();
+
+        mockMvc.perform(delete(ApiPaths.PRODUCTS + "/{id}", firstId))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post(ApiPaths.PRODUCTS)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name", is("Reusable Name")));
     }
 
     /**

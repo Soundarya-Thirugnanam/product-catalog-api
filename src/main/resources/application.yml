@@ -22,6 +22,14 @@ spring:
       enabled: true
       web-port: 8090
 
+  cache:
+    type: redis
+
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST:localhost}
+      port: ${SPRING_REDIS_PORT:6379}
+
 server:
   port: 8080
   shutdown: graceful
@@ -30,7 +38,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,caches
   endpoint:
     health:
       probes:

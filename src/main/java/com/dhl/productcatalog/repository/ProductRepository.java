@@ -6,24 +6,35 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public interface ProductRepository extends JpaRepository<Product, UUID> {
 
     /**
-     * Finds products by status with pagination.
+     * Finds a non-deleted product by id.
      */
-    Page<Product> findAllByStatus(
+    Optional<Product> findByIdAndDeletedFalse(UUID id);
+
+    /**
+     * Finds non-deleted products with pagination.
+     */
+    Page<Product> findAllByDeletedFalse(Pageable pageable);
+
+    /**
+     * Finds non-deleted products by status with pagination.
+     */
+    Page<Product> findAllByStatusAndDeletedFalse(
             ProductStatus status,
             Pageable pageable);
 
     /**
-     * Checks whether a product with this name already exists.
+     * Checks whether an active (non-deleted) product with this name already exists.
      */
-    boolean existsByName(String name);
+    boolean existsByUniqueName(String uniqueName);
 
     /**
-     * Checks whether a product other than the given id already has this name.
+     * Checks whether an active (non-deleted) product other than the given id already has this name.
      */
-    boolean existsByNameAndIdNot(String name, UUID id);
+    boolean existsByUniqueNameAndIdNot(String uniqueName, UUID id);
 }

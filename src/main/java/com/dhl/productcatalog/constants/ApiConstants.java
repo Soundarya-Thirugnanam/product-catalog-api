@@ -19,6 +19,12 @@ public final class ApiConstants {
     public static final String DEFAULT_USER_NAME = "postman-user";
 
     /**
+     * Redis cache holding individual product lookups by id.
+     */
+    public static final String PRODUCT_CACHE = "products";
+    public static final long PRODUCT_CACHE_TTL_MINUTES = 10;
+
+    /**
      * Prevents instantiation.
      */
     private ApiConstants() {

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "DHL Product Catalog API",
-    "description": "Full CRUD + validation + error-handling scenario coverage for the Product Catalog API. Covers the optional `description` field, unique product names, `X-User-Name`-driven audit fields (createdBy/updatedBy/createdOn/updatedOn) and the `/audit` change-history endpoint. Run the whole collection top-to-bottom against a freshly restarted app (in-memory H2 is wiped on restart) so the '0 - Empty List' folder sees a genuinely empty catalog.",
+    "description": "Full CRUD + validation + error-handling scenario coverage for the Product Catalog API. Covers the optional `description` field, unique product names, `X-User-Name`-driven audit fields (createdBy/updatedBy/createdOn/updatedOn), the `/audit` change-history endpoint, soft delete (deleted products excluded from GET/list but still visible in audit history), and the Redis-backed `GET /{id}` cache (population, eviction on update, `/actuator/caches` visibility). Run the whole collection top-to-bottom against a freshly restarted app (in-memory H2 is wiped on restart) so the '0 - Empty List' folder sees a genuinely empty catalog.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -719,6 +719,28 @@
           ]
         },
         {
+          "name": "List products after delete -> deleted item excluded (soft delete)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products?size=100"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 204', () => pm.expect([200, 204]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  const ids = json.content.map(p => p.id);",
+                  "  pm.test('deleted product id is not in the list', () => pm.expect(ids).to.not.include(pm.collectionVariables.get('tempProductId')));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Get audit history after delete -> 200 still shows full history",
           "request": {
             "method": "GET",
@@ -751,6 +773,116 @@
               "script": {
                 "exec": [
                   "pm.test('Status is 404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create product reusing the deleted product's name -> 201 (name freed by soft delete)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Temp Delete Target\",\"price\":2.00,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created (not 409)', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('name matches the reused name', () => pm.expect(json.name).to.eql('Temp Delete Target'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8 - Cache Behavior (Redis)",
+      "item": [
+        {
+          "name": "Get product by id (warms the cache) -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products/{{productId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('price reflects last update from folder 4', () => pm.expect(json.price).to.eql(24.99));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actuator caches shows the products cache populated -> 200",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/actuator/caches"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('products cache is registered', () => pm.expect(json.cacheManagers.cacheManager.caches).to.have.property('products'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update product price (evicts the cached entry) -> 200",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/products/{{productId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"Wireless Mouse Pro\",\"description\":\"Ergonomic wireless mouse, now with a faster sensor\",\"price\":39.99,\"status\":\"ACTIVE\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('price updated', () => pm.expect(json.price).to.eql(39.99));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get product after update -> 200 returns fresh price, not the stale cached one",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/products/{{productId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('price is the post-update value, proving the cache entry was evicted', () => pm.expect(json.price).to.eql(39.99));"
                 ]
               }
             }

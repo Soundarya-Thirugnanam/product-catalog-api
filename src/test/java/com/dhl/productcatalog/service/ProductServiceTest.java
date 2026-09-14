@@ -62,7 +62,7 @@ class ProductServiceTest {
                 ProductStatus.ACTIVE
         );
 
-        when(repository.existsByName("Gaming Laptop")).thenReturn(false);
+        when(repository.existsByUniqueName("Gaming Laptop")).thenReturn(false);
         when(repository.save(any(Product.class))).thenReturn(saved);
 
         ProductResponse response = service.create(request);
@@ -83,7 +83,7 @@ class ProductServiceTest {
         ProductRequest request =
                 new ProductRequest("Existing", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
 
-        when(repository.existsByName("Existing")).thenReturn(true);
+        when(repository.existsByUniqueName("Existing")).thenReturn(true);
 
         assertThatThrownBy(() -> service.create(request))
                 .isInstanceOf(DuplicateProductNameException.class);
@@ -104,8 +104,8 @@ class ProductServiceTest {
                 ProductStatus.INACTIVE
         );
 
-        when(repository.findById(id)).thenReturn(Optional.of(product));
-        when(repository.existsByNameAndIdNot("New Product", id)).thenReturn(false);
+        when(repository.findByIdAndDeletedFalse(id)).thenReturn(Optional.of(product));
+        when(repository.existsByUniqueNameAndIdNot("New Product", id)).thenReturn(false);
         when(repository.saveAndFlush(any(Product.class))).thenReturn(product);
 
         ProductResponse response = service.update(
@@ -128,8 +128,8 @@ class ProductServiceTest {
         UUID id = UUID.randomUUID();
         Product product = Product.create("Old", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
 
-        when(repository.findById(id)).thenReturn(Optional.of(product));
-        when(repository.existsByNameAndIdNot("Taken", id)).thenReturn(true);
+        when(repository.findByIdAndDeletedFalse(id)).thenReturn(Optional.of(product));
+        when(repository.existsByUniqueNameAndIdNot("Taken", id)).thenReturn(true);
 
         ProductRequest request = new ProductRequest("Taken", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
 
@@ -145,7 +145,7 @@ class ProductServiceTest {
     @Test
     void shouldThrow404WhenProductDoesNotExist() {
         UUID id = UUID.randomUUID();
-        when(repository.findById(id)).thenReturn(Optional.empty());
+        when(repository.findByIdAndDeletedFalse(id)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.getById(id))
                 .isInstanceOf(ProductNotFoundException.class)
@@ -153,32 +153,34 @@ class ProductServiceTest {
     }
 
     /**
-     * A missing product must not be deleted.
+     * A missing (or already-deleted) product must not be deleted again.
      */
     @Test
     void shouldNotDeleteUnknownProduct() {
         UUID id = UUID.randomUUID();
-        when(repository.findById(id)).thenReturn(Optional.empty());
+        when(repository.findByIdAndDeletedFalse(id)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.delete(id))
                 .isInstanceOf(ProductNotFoundException.class);
 
-        verify(repository, never()).delete(any());
+        verify(repository, never()).save(any());
     }
 
     /**
-     * Deleting a product must still record a DELETED audit entry.
+     * Deleting a product must record a DELETED audit entry and soft-delete (not remove) the row.
      */
     @Test
     void shouldRecordAuditEntryOnDelete() {
         UUID id = UUID.randomUUID();
         Product product = Product.create("Old", null, new BigDecimal("10.00"), ProductStatus.ACTIVE);
 
-        when(repository.findById(id)).thenReturn(Optional.of(product));
+        when(repository.findByIdAndDeletedFalse(id)).thenReturn(Optional.of(product));
 
         service.delete(id);
 
         verify(auditRepository).save(argThat(audit -> audit.getAction() == ProductAuditAction.DELETED));
-        verify(repository).delete(product);
+        verify(repository).save(product);
+        verify(repository, never()).delete(any());
+        assertThat(product.isDeleted()).isTrue();
     }
 }

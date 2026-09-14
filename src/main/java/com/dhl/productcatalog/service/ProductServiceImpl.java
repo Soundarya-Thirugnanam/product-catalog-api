@@ -14,6 +14,8 @@ import com.dhl.productcatalog.repository.ProductAuditRepository;
 import com.dhl.productcatalog.repository.ProductRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -53,7 +55,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductResponse create(ProductRequest request) {
         String name = normalizeName(request.name());
 
-        if (repository.existsByName(name)) {
+        if (repository.existsByUniqueName(name)) {
             log.warn("Rejected create: name={} already exists", name);
             throw new DuplicateProductNameException(name);
         }
@@ -78,20 +80,21 @@ public class ProductServiceImpl implements ProductService {
      * @throws ProductNotFoundException if the product does not exist
      */
     @Override
+    @Cacheable(cacheNames = ApiConstants.PRODUCT_CACHE, key = "#id")
     public ProductResponse getById(UUID id) {
-        return repository.findById(id)
+        return repository.findByIdAndDeletedFalse(id)
                 .map(ProductResponse::from)
                 .orElseThrow(() -> new ProductNotFoundException(id));
     }
 
     /**
-     * Lists products, optionally filtered by status.
+     * Lists non-deleted products, optionally filtered by status.
      */
     @Override
     public Page<ProductResponse> getAll(ProductStatus status, Pageable pageable) {
         Page<Product> products = status == null
-                ? repository.findAll(pageable)
-                : repository.findAllByStatus(status, pageable);
+                ? repository.findAllByDeletedFalse(pageable)
+                : repository.findAllByStatusAndDeletedFalse(status, pageable);
 
         return products.map(ProductResponse::from);
     }
@@ -104,13 +107,14 @@ public class ProductServiceImpl implements ProductService {
      */
     @Override
     @Transactional
+    @CacheEvict(cacheNames = ApiConstants.PRODUCT_CACHE, key = "#id")
     public ProductResponse update(UUID id, ProductRequest request) {
-        Product product = repository.findById(id)
+        Product product = repository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ProductNotFoundException(id));
 
         String name = normalizeName(request.name());
 
-        if (repository.existsByNameAndIdNot(name, id)) {
+        if (repository.existsByUniqueNameAndIdNot(name, id)) {
             log.warn("Rejected update: id={} name={} already used by another product", id, name);
             throw new DuplicateProductNameException(name);
         }
@@ -130,19 +134,22 @@ public class ProductServiceImpl implements ProductService {
     }
 
     /**
-     * Deletes a product by id.
+     * Soft-deletes a product by id: the row is kept (marked deleted) so audit history
+     * remains available, but the product no longer appears in {@link #getById} or {@link #getAll}.
      *
-     * @throws ProductNotFoundException if the product does not exist
+     * @throws ProductNotFoundException if the product does not exist (or is already deleted)
      */
     @Override
     @Transactional
+    @CacheEvict(cacheNames = ApiConstants.PRODUCT_CACHE, key = "#id")
     public void delete(UUID id) {
-        Product product = repository.findById(id)
+        Product product = repository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ProductNotFoundException(id));
 
         recordAudit(product, ProductAuditAction.DELETED);
-        repository.delete(product);
-        log.info("Deleted product id={} name={}", product.getId(), product.getName());
+        product.markDeleted();
+        repository.save(product);
+        log.info("Soft-deleted product id={} name={}", product.getId(), product.getName());
     }
 
     /**

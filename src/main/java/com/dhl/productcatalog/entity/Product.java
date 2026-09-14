@@ -19,7 +19,7 @@ import java.util.UUID;
                 @Index(name = "idx_product_name", columnList = "name"),
                 @Index(name = "idx_product_status", columnList = "status")
         },
-        uniqueConstraints = @UniqueConstraint(name = "uk_product_name", columnNames = "name")
+        uniqueConstraints = @UniqueConstraint(name = "uk_product_unique_name", columnNames = "unique_name")
 )
 public class Product {
 
@@ -29,6 +29,15 @@ public class Product {
 
     @Column(nullable = false, length = ProductConstants.NAME_MAX_LENGTH)
     private String name;
+
+    /**
+     * Mirrors {@code name} while the product is active and is set to {@code null} on soft
+     * delete, so the unique constraint stops applying to deleted rows: SQL unique constraints
+     * don't consider {@code NULL} values as conflicting, so a deleted product's name frees up
+     * for reuse while an active row with that name still can't coexist with another.
+     */
+    @Column(name = "unique_name", length = ProductConstants.NAME_MAX_LENGTH)
+    private String uniqueName;
 
     @Column(length = ProductConstants.DESCRIPTION_MAX_LENGTH)
     private String description;
@@ -56,6 +65,9 @@ public class Product {
     @Column(name = "updated_by", nullable = false, length = 100)
     private String updatedBy;
 
+    @Column(nullable = false)
+    private boolean deleted = false;
+
     /**
      * No-arg constructor required by JPA.
      */
@@ -68,6 +80,7 @@ public class Product {
     private Product(UUID id, String name, String description, BigDecimal price, ProductStatus status) {
         this.id = id;
         this.name = name;
+        this.uniqueName = name;
         this.description = description;
         this.price = price;
         this.status = status;
@@ -85,9 +98,19 @@ public class Product {
      */
     public void update(String name, String description, BigDecimal price, ProductStatus status) {
         this.name = name;
+        this.uniqueName = name;
         this.description = description;
         this.price = price;
         this.status = status;
+    }
+
+    /**
+     * Soft-deletes the product: the row stays, but it's excluded from all read queries,
+     * and its name is freed up (see {@link #uniqueName}) for reuse by a new product.
+     */
+    public void markDeleted() {
+        this.deleted = true;
+        this.uniqueName = null;
     }
 
     public UUID getId() {
@@ -96,6 +119,10 @@ public class Product {
 
     public String getName() {
         return name;
+    }
+
+    public String getUniqueName() {
+        return uniqueName;
     }
 
     public String getDescription() {
@@ -124,5 +151,9 @@ public class Product {
 
     public String getUpdatedBy() {
         return updatedBy;
+    }
+
+    public boolean isDeleted() {
+        return deleted;
     }
 }
