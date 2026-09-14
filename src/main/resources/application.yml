@@ -39,3 +39,10 @@ management:
 springdoc:
   api-docs:
     enabled: false
+
+logging:
+  level:
+    root: INFO
+    com.dhl.productcatalog: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"

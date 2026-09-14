@@ -12,6 +12,8 @@ import com.dhl.productcatalog.exception.DuplicateProductNameException;
 import com.dhl.productcatalog.exception.ProductNotFoundException;
 import com.dhl.productcatalog.repository.ProductAuditRepository;
 import com.dhl.productcatalog.repository.ProductRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,6 +26,8 @@ import java.util.UUID;
 @Service
 @Transactional(readOnly = true)
 public class ProductServiceImpl implements ProductService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductServiceImpl.class);
 
     private final ProductRepository repository;
     private final ProductAuditRepository auditRepository;
@@ -50,6 +54,7 @@ public class ProductServiceImpl implements ProductService {
         String name = normalizeName(request.name());
 
         if (repository.existsByName(name)) {
+            log.warn("Rejected create: name={} already exists", name);
             throw new DuplicateProductNameException(name);
         }
 
@@ -62,6 +67,7 @@ public class ProductServiceImpl implements ProductService {
 
         Product saved = repository.save(product);
         recordAudit(saved, ProductAuditAction.CREATED);
+        log.info("Created product id={} name={}", saved.getId(), saved.getName());
 
         return ProductResponse.from(saved);
     }
@@ -105,6 +111,7 @@ public class ProductServiceImpl implements ProductService {
         String name = normalizeName(request.name());
 
         if (repository.existsByNameAndIdNot(name, id)) {
+            log.warn("Rejected update: id={} name={} already used by another product", id, name);
             throw new DuplicateProductNameException(name);
         }
 
@@ -117,6 +124,7 @@ public class ProductServiceImpl implements ProductService {
 
         Product updated = repository.saveAndFlush(product);
         recordAudit(updated, ProductAuditAction.UPDATED);
+        log.info("Updated product id={} name={}", updated.getId(), updated.getName());
 
         return ProductResponse.from(updated);
     }
@@ -134,6 +142,7 @@ public class ProductServiceImpl implements ProductService {
 
         recordAudit(product, ProductAuditAction.DELETED);
         repository.delete(product);
+        log.info("Deleted product id={} name={}", product.getId(), product.getName());
     }
 
     /**

@@ -2,6 +2,8 @@ package com.dhl.productcatalog.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
@@ -18,6 +20,8 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
      * Handles {@code @Valid @RequestBody} validation failures.
@@ -104,6 +108,8 @@ public class GlobalExceptionHandler {
             ProductNotFoundException exception,
             HttpServletRequest request) {
 
+        log.warn("Not found on {} {}: {}", request.getMethod(), request.getRequestURI(), exception.getMessage());
+
         return build(
                 HttpStatus.NOT_FOUND,
                 exception.getMessage(),
@@ -136,6 +142,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleDataIntegrityViolation(
             DataIntegrityViolationException exception,
             HttpServletRequest request) {
+
+        log.warn("Data integrity violation on {} {}: {}",
+                request.getMethod(), request.getRequestURI(), exception.getMostSpecificCause().getMessage());
 
         return build(
                 HttpStatus.CONFLICT,
@@ -184,6 +193,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleUnexpected(
             Exception exception,
             HttpServletRequest request) {
+
+        log.error("Unhandled exception on {} {}", request.getMethod(), request.getRequestURI(), exception);
 
         return build(
                 HttpStatus.INTERNAL_SERVER_ERROR,
