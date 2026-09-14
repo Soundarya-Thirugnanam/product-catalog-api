@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.dhl'
 version = '1.0.0'
-description = 'Architect-level Product Catalog API'
+description = 'DHL Product Catalog API'
 
 java {
     toolchain {

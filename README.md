@@ -1,6 +1,6 @@
-# Product Catalog API
+# DHL Product Catalog API
 
-A production-style REST API for managing a product catalog, built to demonstrate clean architecture, SOLID principles, REST semantics, validation, persistence abstraction, transaction boundaries, centralized error handling, pagination, and automated testing.
+A production-style REST API for managing DHL's product catalog, built to demonstrate clean architecture, SOLID principles, REST semantics, validation, persistence abstraction, transaction boundaries, centralized error handling, pagination, and automated testing.
 
 ## Stack
 
@@ -469,7 +469,7 @@ product-catalog-api/
 ├── src/
 │   ├── main/
 │   │   ├── java/
-│   │   │   └── com/infobean/productcatalog/
+│   │   │   └── com/dhl/productcatalog/
 │   │   │       │
 │   │   │       ├── ProductCatalogApplication.java
 │   │   │       │
@@ -520,7 +520,7 @@ product-catalog-api/
 │   │
 │   └── test/
 │       └── java/
-│           └── com/infobean/productcatalog/
+│           └── com/dhl/productcatalog/
 │               ├── controller/
 │               │   └── ProductControllerTest.java
 │               └── service/

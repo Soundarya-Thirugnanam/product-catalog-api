@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "Product Catalog API",
+    "name": "DHL Product Catalog API",
     "description": "Full CRUD + validation + error-handling scenario coverage for the Product Catalog API. Covers the optional `description` field, unique product names, `X-User-Name`-driven audit fields (createdBy/updatedBy/createdOn/updatedOn) and the `/audit` change-history endpoint. Run the whole collection top-to-bottom against a freshly restarted app (in-memory H2 is wiped on restart) so the '0 - Empty List' folder sees a genuinely empty catalog.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
